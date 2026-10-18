@@ -15,6 +15,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>('assistant');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [screenContextActive, setScreenContextActive] = useState(false);
+  const [audioListeningStatus, setAudioListeningStatus] = useState<'idle' | 'listening' | 'paused' | 'error'>('idle');
+  const [volumeLevel, setVolumeLevel] = useState<number>(0);
 
   return (
     <SettingsProvider>
@@ -23,6 +25,8 @@ export default function App() {
           {/* Frameless floating titlebar */}
           <FloatingHeader
             screenContextActive={screenContextActive}
+            audioListeningStatus={audioListeningStatus}
+            volumeLevel={volumeLevel}
             onOpenMenu={() => setIsMenuOpen(!isMenuOpen)}
             isMenuOpen={isMenuOpen}
           />
@@ -51,7 +55,15 @@ export default function App() {
 
           {/* View Container */}
           <main className="flex-1 overflow-hidden">
-            {activeView === 'assistant' && <FloatingAssistant />}
+            {activeView === 'assistant' && (
+              <FloatingAssistant
+                onStatusUpdate={(screenActive, audioStatus, vol) => {
+                  setScreenContextActive(screenActive);
+                  setAudioListeningStatus(audioStatus);
+                  setVolumeLevel(vol);
+                }}
+              />
+            )}
             {activeView === 'interview' && (
               <div className="h-full overflow-y-auto">
                 <InterviewPractice />

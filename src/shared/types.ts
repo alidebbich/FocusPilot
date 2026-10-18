@@ -127,6 +127,8 @@ export interface AppSettings {
   alwaysOnTop: boolean;
   captureIntervalSeconds: number;
   selectedSourceId?: string;
+  autoAnswerQuestions: boolean;
+  preferredAudioSource: 'microphone' | 'system-audio';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -140,6 +142,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   windowOpacity: 0.95,
   alwaysOnTop: false,
   captureIntervalSeconds: 15,
+  autoAnswerQuestions: true,
+  preferredAudioSource: 'microphone',
 };
 
 // ─── IPC Channel Names ───────────────────────────────────────
@@ -238,6 +242,12 @@ export interface ScreenCaptureResult {
   error?: string;
 }
 
+export interface AudioTranscriptContext {
+  segments: Array<{ text: string; timestamp: number; isQuestion?: boolean }>;
+  recentFullText: string;
+  detectedQuestion?: string;
+}
+
 // ─── IPC Payloads ────────────────────────────────────────────
 export interface AiSendMessagePayload {
   conversationId: string;
@@ -248,6 +258,7 @@ export interface AiSendMessagePayload {
   temperature?: number;
   maxTokens?: number;
   imageContext?: ImageContext;
+  audioContext?: AudioTranscriptContext;
 }
 
 export interface AiResponse {

@@ -3,12 +3,16 @@ import { useSettings } from '../context/SettingsContext';
 
 interface FloatingHeaderProps {
   screenContextActive: boolean;
+  audioListeningStatus: 'idle' | 'listening' | 'paused' | 'error';
+  volumeLevel: number;
   onOpenMenu: () => void;
   isMenuOpen: boolean;
 }
 
 export default function FloatingHeader({
   screenContextActive,
+  audioListeningStatus,
+  volumeLevel,
   onOpenMenu,
   isMenuOpen,
 }: FloatingHeaderProps) {
@@ -19,7 +23,6 @@ export default function FloatingHeader({
   const [showOpacityMenu, setShowOpacityMenu] = useState(false);
 
   useEffect(() => {
-    // Check initial pinned and collapsed status
     window.api.window.getAlwaysOnTop().then(setIsPinned).catch(() => {});
     window.api.window.getCollapsed().then(setIsCollapsed).catch(() => {});
   }, []);
@@ -46,31 +49,68 @@ export default function FloatingHeader({
   const minimize = () => window.api.window.minimize();
   const close = () => window.api.window.close();
 
+  const isAudioListening = audioListeningStatus === 'listening';
+  const isAudioPaused = audioListeningStatus === 'paused';
+
   return (
-    <header className="window-drag-region relative flex items-center justify-between h-[46px] px-3.5 bg-charcoal-900/90 border-b border-charcoal-800/80 backdrop-blur-md rounded-t-2xl select-none">
-      {/* Left: Logo & Status */}
-      <div className="flex items-center gap-2.5">
+    <header className="window-drag-region relative flex items-center justify-between h-[46px] px-3 bg-charcoal-900/95 border-b border-charcoal-800/80 backdrop-blur-md rounded-t-2xl select-none">
+      {/* Left: Logo & Twin Status Badges */}
+      <div className="flex items-center gap-2">
         <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-600 to-blue-500 flex items-center justify-center text-white text-[11px] font-bold shadow-md shadow-violet-900/40">
           FP
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-200 tracking-wide">FocusPilot</span>
+        <span className="text-xs font-semibold text-gray-200 tracking-wide mr-0.5">FocusPilot</span>
+
+        {/* Screen Context Badge */}
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+            screenContextActive
+              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+              : 'bg-charcoal-800 text-gray-400 border border-charcoal-700'
+          }`}
+          title={screenContextActive ? 'Screen context enabled' : 'Screen context paused/off'}
+        >
           <span
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-all ${
-              screenContextActive
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
-                : 'bg-charcoal-800 text-gray-400 border border-charcoal-700'
+            className={`w-1.5 h-1.5 rounded-full ${
+              screenContextActive ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
             }`}
-            title={screenContextActive ? 'Screen context enabled' : 'Screen context paused/off'}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                screenContextActive ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
-              }`}
-            />
-            {screenContextActive ? 'Screen ON' : 'Screen OFF'}
-          </span>
-        </div>
+          />
+          {screenContextActive ? 'Screen' : 'Screen Off'}
+        </span>
+
+        {/* Audio Listening Badge */}
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+            isAudioListening
+              ? 'bg-violet-950/80 text-violet-300 border border-violet-800/60'
+              : isAudioPaused
+              ? 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+              : 'bg-charcoal-800 text-gray-400 border border-charcoal-700'
+          }`}
+          title={
+            isAudioListening
+              ? `Listening (Mic Level: ${volumeLevel}%)`
+              : isAudioPaused
+              ? 'Audio listening paused'
+              : 'Audio listening stopped'
+          }
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              isAudioListening
+                ? 'bg-violet-400 animate-pulse'
+                : isAudioPaused
+                ? 'bg-amber-400'
+                : 'bg-gray-500'
+            }`}
+          />
+          {isAudioListening ? 'Audio ON' : isAudioPaused ? 'Audio Paused' : 'Audio Off'}
+          {isAudioListening && volumeLevel > 5 && (
+            <span className="text-[9px] text-violet-400 font-mono">
+              {'|'.repeat(Math.min(3, Math.ceil(volumeLevel / 30)))}
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Right: Window Controls */}

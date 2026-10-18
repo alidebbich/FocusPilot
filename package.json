@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:electron": "electron tests/electron-db.test.js",
     "test:screen": "node tests/screen-ai-flow.test.js",
+    "test:fusion": "node tests/live-fusion-stream.test.js",
     "test:watch": "vitest",
     "start": "electron ."
   },

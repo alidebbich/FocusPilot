@@ -4,15 +4,29 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
-import type { ChatMessage, ImageContext, ScreenSource, ScreenContextStatus } from '../../shared/types';
+import { AudioCaptureService } from '../services/audio/AudioCaptureService';
+import { QuestionDetector } from '../services/audio/QuestionDetector';
+import { ContextFusionService } from '../services/fusion/ContextFusionService';
+import type {
+  AudioDevice,
+  AudioSessionStatus,
+  TranscriptSegment,
+  QuestionDetection,
+} from '../services/audio/types';
+import type {
+  ChatMessage,
+  ImageContext,
+  ScreenSource,
+  ScreenContextStatus,
+} from '../../shared/types';
 
 const QUICK_ACTIONS = [
   { label: '🔍 Explain Screen', prompt: 'Explain clearly what is visible on my screen right now, highlighting key elements and context.' },
   { label: '💻 Explain Code', prompt: 'Analyze the code visible on my screen. Explain what it does, how it works, and point out any potential improvements or bugs.' },
   { label: '⚠️ Understand Error', prompt: 'Help me understand the error message or issue visible on my screen. Explain what caused it and give step-by-step instructions to fix it.' },
-  { label: '📝 Summarize Page', prompt: 'Provide a concise summary of the document, article, or page currently visible on my screen with key bullet points.' },
-  { label: '💡 Suggest Answer', prompt: 'Analyze the question or problem visible on my screen. Suggest an optimal answer and clearly explain the reasoning behind it.' },
-  { label: '⚡ Make Concise', prompt: 'Summarize your previous answer into 3 punchy, actionable bullet points.' },
+  { label: '📝 Summarize Session', prompt: 'Summarize the discussion and visible content from this session into clear key takeaways and action items.' },
+  { label: '💡 Suggest Answer', prompt: 'Analyze the question or problem visible on my screen or spoken in the meeting. Suggest an optimal answer and clearly explain the reasoning.' },
+  { label: '⚡ Make Concise', prompt: 'Summarize your previous response into 3 concise, actionable bullet points.' },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -23,45 +37,124 @@ const INTERVAL_OPTIONS = [
   { label: 'Every 60s', value: 60 },
 ];
 
-export default function FloatingAssistant() {
+// Singleton instances for persistent audio & fusion lifecycle across renders
+const audioService = new AudioCaptureService();
+const questionDetector = new QuestionDetector();
+const fusionService = new ContextFusionService();
+
+export default function FloatingAssistant({
+  onStatusUpdate,
+}: {
+  onStatusUpdate?: (screenActive: boolean, audioStatus: AudioSessionStatus, volume: number) => void;
+}) {
   const { settings, hasApiKey } = useSettings();
   const { showToast } = useToast();
 
-  // Screen Context state
+  // ─── Screen Context State ─────────────────────────────────────
   const [screenContextEnabled, setScreenContextEnabled] = useState(false);
   const [contextStatus, setContextStatus] = useState<ScreenContextStatus>('off');
   const [sources, setSources] = useState<ScreenSource[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string>('');
   const [currentFrame, setCurrentFrame] = useState<ImageContext | null>(null);
   const [intervalSeconds, setIntervalSeconds] = useState<number>(settings.captureIntervalSeconds || 15);
-  const [isFrameChanged, setIsFrameChanged] = useState<boolean>(false);
   const [showSourcesDropdown, setShowSourcesDropdown] = useState(false);
   const [showFullPreview, setShowFullPreview] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [screenError, setScreenError] = useState<string | null>(null);
 
-  // Chat conversation state
+  // ─── Live Audio Understanding State ──────────────────────────
+  const [audioStatus, setAudioStatus] = useState<AudioSessionStatus>('idle');
+  const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>('');
+  const [activeMicLabel, setActiveMicLabel] = useState<string>('Default Microphone');
+  const [volumeLevel, setVolumeLevel] = useState<number>(0);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [interimText, setInterimText] = useState<string>('');
+  const [detectedQuestion, setDetectedQuestion] = useState<QuestionDetection | null>(null);
+  const [autoAnswer, setAutoAnswer] = useState<boolean>(settings.autoAnswerQuestions ?? true);
+  const [showAudioOptions, setShowAudioOptions] = useState(false);
+  const [showTranscriptPanel, setShowTranscriptPanel] = useState(true);
+
+  // ─── Conversation / Chat State ───────────────────────────────
   const [conversationId, setConversationId] = useState<string>(() => uuidv4());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streamingText, setStreamingText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const captureTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Scroll to bottom on new messages
+  // Notify parent header of status updates
+  useEffect(() => {
+    onStatusUpdate?.(screenContextEnabled, audioStatus, volumeLevel);
+  }, [screenContextEnabled, audioStatus, volumeLevel, onStatusUpdate]);
+
+  // Scroll messages to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingText]);
 
-  // Load available screen sources on mount
+  // Scroll transcript to bottom
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [transcriptSegments, interimText]);
+
+  // Initial source and audio device loading
   useEffect(() => {
     loadSources();
+    loadAudioDevices();
   }, []);
 
-  // Listen to streaming chunks
+  // ─── Audio Service Event Listeners ───────────────────────────
+  useEffect(() => {
+    const unsubTranscript = audioService.onTranscript((seg) => {
+      if (seg.isFinal) {
+        setTranscriptSegments((prev) => [...prev, seg]);
+        setInterimText('');
+        // Feed into Question Detector
+        questionDetector.processSegment(seg);
+      } else {
+        setInterimText(seg.text);
+        questionDetector.processSegment(seg);
+      }
+    });
+
+    const unsubStatus = audioService.onStatusChange((status) => {
+      setAudioStatus(status);
+    });
+
+    const unsubError = audioService.onError((err) => {
+      showToast('error', err);
+    });
+
+    const unsubVolume = audioService.onVolumeLevel((vol) => {
+      setVolumeLevel(vol);
+    });
+
+    const unsubQuestion = questionDetector.onQuestion((q) => {
+      setDetectedQuestion(q);
+      showToast('info', `Detected question: "${q.text.substring(0, 40)}…"`);
+
+      // If auto-answer is enabled and not already generating, trigger response immediately!
+      if (autoAnswer && !isGenerating && hasApiKey) {
+        handleTriggerAnswer(q.text);
+      }
+    });
+
+    return () => {
+      unsubTranscript();
+      unsubStatus();
+      unsubError();
+      unsubVolume();
+      unsubQuestion();
+    };
+  }, [autoAnswer, isGenerating, hasApiKey, showToast]);
+
+  // ─── AI Streaming Event Listeners ────────────────────────────
   useEffect(() => {
     const unsubChunk = window.api.ai.onStreamChunk((chunk) => {
       setStreamingText((prev) => prev + chunk);
@@ -97,7 +190,7 @@ export default function FloatingAssistant() {
     };
   }, [screenContextEnabled, showToast]);
 
-  // Continuous capture interval effect
+  // ─── Continuous Screen Capture Interval ───────────────────────
   useEffect(() => {
     if (captureTimerRef.current) {
       clearInterval(captureTimerRef.current);
@@ -132,10 +225,18 @@ export default function FloatingAssistant() {
     }
   }
 
+  async function loadAudioDevices() {
+    const devices = await audioService.getDevices();
+    setAudioDevices(devices);
+    if (devices.length > 0 && !selectedMicId) {
+      setSelectedMicId(devices[0].deviceId);
+    }
+  }
+
   async function performCapture(force = true): Promise<ImageContext | null> {
     try {
       setContextStatus('capturing');
-      setErrorMessage(null);
+      setScreenError(null);
 
       const res = await window.api.screen.captureFrame({
         sourceId: selectedSourceId || undefined,
@@ -143,7 +244,7 @@ export default function FloatingAssistant() {
       });
 
       if (!res.ok || !res.base64 || !res.dataUrl) {
-        setErrorMessage(res.error || 'Failed to capture frame');
+        setScreenError(res.error || 'Failed to capture frame');
         setContextStatus('error');
         return null;
       }
@@ -161,12 +262,11 @@ export default function FloatingAssistant() {
       };
 
       setCurrentFrame(frame);
-      setIsFrameChanged(Boolean(res.changed));
       setContextStatus('ready');
       return frame;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(msg);
+      setScreenError(msg);
       setContextStatus('error');
       return null;
     }
@@ -186,56 +286,96 @@ export default function FloatingAssistant() {
     }
   };
 
-  const handleManualAnalyze = async () => {
+  const handleManualCapture = async () => {
     if (!screenContextEnabled) {
       setScreenContextEnabled(true);
     }
     const frame = await performCapture(true);
     if (frame) {
-      showToast('success', 'Current screen captured as context');
+      showToast('success', 'Screen captured');
     }
   };
 
-  const sendMessage = async (textToSend?: string) => {
-    const prompt = (textToSend || input).trim();
+  // ─── Live Audio Control Handlers ─────────────────────────────
+  const toggleAudioListening = async () => {
+    if (audioStatus === 'listening') {
+      await audioService.stopListening();
+      questionDetector.clear();
+      showToast('info', 'Audio listening stopped (Microphone disconnected)');
+    } else if (audioStatus === 'paused') {
+      audioService.resumeListening();
+      showToast('info', 'Audio listening resumed');
+    } else {
+      try {
+        const { deviceLabel } = await audioService.startListening({
+          deviceId: selectedMicId || undefined,
+        });
+        setActiveMicLabel(deviceLabel);
+        showToast('success', `Listening on: ${deviceLabel}`);
+      } catch (err) {
+        // Error already handled by callback
+      }
+    }
+  };
+
+  const handlePauseAudio = () => {
+    if (audioStatus === 'listening') {
+      audioService.pauseListening();
+      showToast('info', 'Audio listening paused');
+    } else if (audioStatus === 'paused') {
+      audioService.resumeListening();
+      showToast('info', 'Audio listening resumed');
+    }
+  };
+
+  const handleClearTranscript = () => {
+    setTranscriptSegments([]);
+    setInterimText('');
+    setDetectedQuestion(null);
+    questionDetector.clear();
+    showToast('info', 'Transcript cleared');
+  };
+
+  // ─── Send / Context Fusion Handler ───────────────────────────
+  const handleTriggerAnswer = async (questionText?: string) => {
+    const prompt = (questionText || input).trim();
     if (!prompt || isGenerating) return;
 
     if (!hasApiKey) {
-      showToast('warning', 'Please configure your API key in Settings first.');
+      showToast('warning', 'Please enter your API key in Settings first.');
       return;
     }
 
     let activeImageContext = currentFrame;
-
-    // If screen context is enabled but no frame yet, capture right now
     if (screenContextEnabled && !activeImageContext) {
       activeImageContext = await performCapture(true);
     }
 
-    const userMessage: ChatMessage = {
-      id: uuidv4(),
-      role: 'user',
-      content: prompt,
-      timestamp: Date.now(),
-    };
+    // Cancel any previous in-progress generation
+    fusionService.cancelActiveRequest();
 
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    // Prepare fused payload
+    const payload = fusionService.prepareFusedPayload({
+      conversationId,
+      question: prompt,
+      imageContext: activeImageContext,
+      transcriptSegments,
+      previousMessages: messages,
+      provider: settings.provider,
+      model: settings.model,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+    });
+
+    setMessages(payload.messages);
     setInput('');
     setStreamingText('');
     setIsGenerating(true);
+    setDetectedQuestion(null);
     setContextStatus(activeImageContext ? 'analyzing' : 'ready');
 
     try {
-      await window.api.ai.sendMessage({
-        conversationId,
-        messages: newMessages,
-        provider: settings.provider,
-        model: settings.model,
-        temperature: settings.temperature,
-        maxTokens: settings.maxTokens,
-        imageContext: activeImageContext || undefined,
-      });
+      await window.api.ai.sendMessage(payload);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast('error', msg);
@@ -245,7 +385,7 @@ export default function FloatingAssistant() {
   };
 
   const handleStop = () => {
-    window.api.ai.cancel();
+    fusionService.cancelActiveRequest();
     setIsGenerating(false);
     setContextStatus(screenContextEnabled ? 'ready' : 'off');
     showToast('info', 'Generation stopped');
@@ -268,162 +408,277 @@ export default function FloatingAssistant() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleTriggerAnswer();
     }
   };
 
+  const isAudioActive = audioStatus === 'listening';
+  const isAudioPaused = audioStatus === 'paused';
+
   return (
     <div className="flex flex-col h-full bg-charcoal-950/90 text-gray-100 overflow-hidden select-none">
-      {/* ─── SCREEN CONTEXT CONTROL BAR ──────────────────────── */}
-      <div className="px-3.5 py-2.5 bg-charcoal-900/95 border-b border-charcoal-800/80 backdrop-blur-md">
-        <div className="flex items-center justify-between gap-2">
-          {/* Toggle Switch */}
+      {/* ─── DUAL CONTEXT CONTROL BAR ────────────────────────── */}
+      <div className="px-3 py-2 bg-charcoal-900/95 border-b border-charcoal-800/80 backdrop-blur-md flex flex-col gap-2">
+        {/* Row 1: Screen Context Controls */}
+        <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
             <button
               onClick={toggleScreenContext}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                screenContextEnabled ? 'bg-violet-600' : 'bg-charcoal-700'
+              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                screenContextEnabled ? 'bg-emerald-600' : 'bg-charcoal-700'
               }`}
               title="Toggle Screen Context"
             >
               <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  screenContextEnabled ? 'translate-x-4' : 'translate-x-0'
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  screenContextEnabled ? 'translate-x-3' : 'translate-x-0'
                 }`}
               />
             </button>
-            <span className="text-xs font-medium text-gray-200">Screen Context</span>
+            <span className="font-medium text-gray-200 text-[11px]">Screen Context</span>
+            {screenContextEnabled && currentFrame && (
+              <span
+                onClick={() => setShowFullPreview(true)}
+                className="text-[10px] text-gray-400 hover:text-violet-300 bg-charcoal-800 px-1.5 py-0.5 rounded cursor-pointer border border-charcoal-700"
+                title="Click to view full screen preview"
+              >
+                📷 {currentFrame.width}x{currentFrame.height}
+              </span>
+            )}
           </div>
 
-          {/* Quick Analyze Button */}
-          <button
-            onClick={handleManualAnalyze}
-            disabled={isGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-charcoal-800 hover:bg-charcoal-700 active:scale-95 text-violet-300 hover:text-violet-200 border border-charcoal-700 hover:border-violet-600/50 rounded-lg transition-all cursor-pointer shadow-sm"
-            title="Take a fresh capture of current screen"
-          >
-            <span>📸</span>
-            <span>Capture Now</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleManualCapture}
+              disabled={isGenerating}
+              className="px-2 py-0.5 text-[11px] font-medium bg-charcoal-800 hover:bg-charcoal-700 active:scale-95 text-emerald-400 border border-charcoal-700 hover:border-emerald-600/50 rounded cursor-pointer transition-all"
+              title="Capture current frame"
+            >
+              📸 Capture
+            </button>
 
-          {/* Source Selector & Interval */}
-          <div className="relative">
             <button
               onClick={() => {
                 loadSources();
                 setShowSourcesDropdown(!showSourcesDropdown);
               }}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] bg-charcoal-800/80 hover:bg-charcoal-700 text-gray-300 border border-charcoal-700 rounded-lg cursor-pointer transition-colors"
-              title="Configure capture source & interval"
+              className="px-1.5 py-0.5 text-[11px] bg-charcoal-800/80 hover:bg-charcoal-700 text-gray-300 border border-charcoal-700 rounded cursor-pointer"
+              title="Screen capture target options"
             >
-              <span>⚙ Options</span>
+              ⚙
             </button>
-
-            {showSourcesDropdown && (
-              <div className="absolute right-0 top-7 w-64 bg-charcoal-900 border border-charcoal-700 rounded-xl shadow-2xl p-3 z-50 text-xs flex flex-col gap-3 animate-fade-in">
-                <div>
-                  <div className="font-semibold text-gray-200 mb-1.5">Capture Target</div>
-                  <select
-                    value={selectedSourceId}
-                    onChange={(e) => {
-                      setSelectedSourceId(e.target.value);
-                      if (screenContextEnabled) performCapture(true);
-                    }}
-                    className="w-full bg-charcoal-800 border border-charcoal-600 rounded-lg p-1.5 text-gray-200 text-xs focus:outline-none focus:border-violet-500"
-                  >
-                    {sources.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name.length > 28 ? s.name.substring(0, 28) + '…' : s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className="font-semibold text-gray-200 mb-1.5">Auto-Refresh Interval</div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {INTERVAL_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => {
-                          setIntervalSeconds(opt.value);
-                          setShowSourcesDropdown(false);
-                        }}
-                        className={`px-2 py-1 rounded text-left transition-colors cursor-pointer text-[11px] ${
-                          intervalSeconds === opt.value
-                            ? 'bg-violet-600 text-white font-medium'
-                            : 'bg-charcoal-800 text-gray-300 hover:bg-charcoal-700'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Status & Preview Pill */}
-        {screenContextEnabled && (
-          <div className="mt-2 pt-2 border-t border-charcoal-800/60 flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-2">
-              {currentFrame ? (
-                <div
-                  onClick={() => setShowFullPreview(true)}
-                  className="flex items-center gap-1.5 bg-charcoal-800 hover:bg-charcoal-750 px-2 py-0.5 rounded-md cursor-pointer border border-charcoal-700/80 transition-all group"
-                  title="Click to preview captured frame"
-                >
-                  <img
-                    src={currentFrame.dataUrl}
-                    alt="Screen frame"
-                    className="w-5 h-3.5 object-cover rounded border border-charcoal-600"
-                  />
-                  <span className="text-gray-300 group-hover:text-violet-300">
-                    {currentFrame.sourceName ? (currentFrame.sourceName.length > 18 ? currentFrame.sourceName.substring(0, 18) + '…' : currentFrame.sourceName) : 'Screen'}
-                  </span>
-                  <span className="text-[10px] text-gray-500">
-                    {Math.round((Date.now() - currentFrame.timestamp) / 1000)}s ago
-                  </span>
-                </div>
-              ) : (
-                <span className="text-gray-400">Capturing display…</span>
-              )}
+        {/* Screen Target Dropdown */}
+        {showSourcesDropdown && (
+          <div className="bg-charcoal-850 border border-charcoal-700 rounded-lg p-2.5 text-xs flex flex-col gap-2 animate-fade-in shadow-xl">
+            <div>
+              <div className="font-semibold text-gray-300 text-[11px] mb-1">Target Window / Screen</div>
+              <select
+                value={selectedSourceId}
+                onChange={(e) => {
+                  setSelectedSourceId(e.target.value);
+                  if (screenContextEnabled) performCapture(true);
+                }}
+                className="w-full bg-charcoal-900 border border-charcoal-600 rounded p-1 text-gray-200 text-xs focus:outline-none"
+              >
+                {sources.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name.length > 30 ? s.name.substring(0, 30) + '…' : s.name}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  contextStatus === 'capturing'
-                    ? 'bg-amber-400 animate-pulse'
-                    : contextStatus === 'analyzing'
-                    ? 'bg-violet-400 animate-pulse'
-                    : contextStatus === 'ready'
-                    ? 'bg-emerald-400'
-                    : 'bg-red-400'
-                }`}
-              />
-              <span className="text-gray-400 capitalize">{contextStatus}</span>
-              {currentFrame && (
-                <button
-                  onClick={() => setCurrentFrame(null)}
-                  className="ml-1 text-gray-500 hover:text-gray-300"
-                  title="Detach frame"
-                >
-                  ✕
-                </button>
-              )}
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-gray-400">Capture Interval:</span>
+              <div className="flex gap-1">
+                {INTERVAL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setIntervalSeconds(opt.value);
+                      setShowSourcesDropdown(false);
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
+                      intervalSeconds === opt.value
+                        ? 'bg-violet-600 text-white font-medium'
+                        : 'bg-charcoal-800 text-gray-300 hover:bg-charcoal-700'
+                    }`}
+                  >
+                    {opt.label.replace('Every ', '')}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {errorMessage && (
-          <div className="mt-1.5 text-[11px] text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-900/60">
-            {errorMessage}
+        {/* Row 2: Live Audio Understanding Controls */}
+        <div className="flex items-center justify-between gap-2 text-xs pt-1 border-t border-charcoal-800/60">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleAudioListening}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer shadow-sm ${
+                isAudioActive
+                  ? 'bg-red-600 hover:bg-red-500 text-white'
+                  : isAudioPaused
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                  : 'bg-violet-600 hover:bg-violet-500 text-white'
+              }`}
+              title={isAudioActive ? 'Stop live audio listening' : 'Start live audio listening'}
+            >
+              <span>{isAudioActive ? '⏹ Stop' : isAudioPaused ? '▶ Resume' : '🎙️ Listen'}</span>
+            </button>
+
+            {isAudioActive && (
+              <button
+                onClick={handlePauseAudio}
+                className="px-2 py-1 bg-charcoal-800 hover:bg-charcoal-700 text-gray-300 text-[10px] rounded border border-charcoal-700 cursor-pointer"
+                title="Pause speech capture"
+              >
+                ⏸ Pause
+              </button>
+            )}
+
+            {/* Audio volume visualizer */}
+            {isAudioActive && (
+              <div className="flex items-center gap-1">
+                <div className="w-12 h-2 bg-charcoal-800 rounded-full overflow-hidden border border-charcoal-700">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-violet-500 transition-all duration-75"
+                    style={{ width: `${volumeLevel}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-gray-400 font-mono">{volumeLevel}%</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {transcriptSegments.length > 0 && (
+              <button
+                onClick={() => setShowTranscriptPanel(!showTranscriptPanel)}
+                className="text-[10px] text-violet-400 hover:text-violet-300 cursor-pointer"
+              >
+                {showTranscriptPanel ? 'Hide Transcript' : `Transcript (${transcriptSegments.length})`}
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                loadAudioDevices();
+                setShowAudioOptions(!showAudioOptions);
+              }}
+              className="px-1.5 py-0.5 text-[11px] bg-charcoal-800/80 hover:bg-charcoal-700 text-gray-300 border border-charcoal-700 rounded cursor-pointer"
+              title="Microphone source disclosure & options"
+            >
+              ⚙
+            </button>
+          </div>
+        </div>
+
+        {/* Audio Device & Disclosure Dropdown */}
+        {showAudioOptions && (
+          <div className="bg-charcoal-850 border border-charcoal-700 rounded-lg p-2.5 text-xs flex flex-col gap-2 animate-fade-in shadow-xl">
+            <div>
+              <div className="font-semibold text-gray-300 text-[11px] mb-1">Microphone Input Device</div>
+              <select
+                value={selectedMicId}
+                onChange={(e) => setSelectedMicId(e.target.value)}
+                disabled={isAudioActive}
+                className="w-full bg-charcoal-900 border border-charcoal-600 rounded p-1 text-gray-200 text-xs focus:outline-none"
+              >
+                {audioDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-[10px] text-gray-400 bg-charcoal-900 p-2 rounded border border-charcoal-700/60 leading-relaxed">
+              <strong>Source Disclosure:</strong> Captures audio from the selected microphone input. For system loopback meetings, select your headset or stereo mix device. Audio is streamed to the built-in speech recognition adapter and never stored raw on disk.
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <label className="flex items-center gap-2 cursor-pointer text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={autoAnswer}
+                  onChange={(e) => setAutoAnswer(e.target.checked)}
+                  className="rounded border-charcoal-600 text-violet-600 focus:ring-0"
+                />
+                <span>Auto-suggest answer when question is detected</span>
+              </label>
+            </div>
           </div>
         )}
       </div>
+
+      {/* ─── LIVE TRANSCRIPTION STREAM PANEL ─────────────────── */}
+      {showTranscriptPanel && (transcriptSegments.length > 0 || interimText) && (
+        <div className="max-h-28 overflow-y-auto px-3 py-2 bg-charcoal-900/60 border-b border-charcoal-800/60 text-[11px] leading-relaxed flex flex-col gap-1">
+          <div className="flex items-center justify-between text-[10px] text-gray-500 pb-1 border-b border-charcoal-800/40">
+            <span className="flex items-center gap-1 font-semibold uppercase tracking-wider text-violet-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+              Live Speech Transcript
+            </span>
+            <button
+              onClick={handleClearTranscript}
+              className="text-gray-500 hover:text-gray-300 cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            {transcriptSegments.slice(-4).map((seg) => (
+              <div key={seg.id} className="text-gray-300">
+                <span className="text-[9px] text-gray-500 mr-1.5">
+                  {new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                <span>{seg.text}</span>
+              </div>
+            ))}
+            {interimText && (
+              <div className="text-violet-300/80 italic animate-pulse">
+                <span className="text-[9px] text-violet-500 mr-1.5">now</span>
+                <span>{interimText}…</span>
+              </div>
+            )}
+          </div>
+          <div ref={transcriptEndRef} />
+        </div>
+      )}
+
+      {/* ─── DETECTED QUESTION ALERT BANNER ──────────────────── */}
+      {detectedQuestion && (
+        <div className="px-3 py-2 bg-gradient-to-r from-violet-950/90 to-blue-950/90 border-b border-violet-800/70 flex items-center justify-between gap-2 text-xs animate-slide-in">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-violet-300 uppercase tracking-wide">
+              <span>💡</span>
+              <span>Question Detected</span>
+            </div>
+            <div className="text-gray-200 font-medium truncate text-xs mt-0.5">
+              "{detectedQuestion.text}"
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => handleTriggerAnswer(detectedQuestion.text)}
+              disabled={isGenerating}
+              className="px-2.5 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded text-[11px] font-semibold shadow-sm cursor-pointer"
+            >
+              Answer
+            </button>
+            <button
+              onClick={() => setDetectedQuestion(null)}
+              className="text-gray-400 hover:text-gray-200 p-1 text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── FULL PREVIEW MODAL ──────────────────────────────── */}
       {showFullPreview && currentFrame && (
@@ -437,7 +692,7 @@ export default function FloatingAssistant() {
           >
             <div className="flex items-center justify-between pb-2 mb-3 border-b border-charcoal-800">
               <span className="font-semibold text-sm text-gray-200">
-                Authorized Screen Preview ({currentFrame.width}x{currentFrame.height})
+                Authorized Screen Context ({currentFrame.width}x{currentFrame.height})
               </span>
               <button
                 onClick={() => setShowFullPreview(false)}
@@ -450,7 +705,7 @@ export default function FloatingAssistant() {
               <img src={currentFrame.dataUrl} alt="Screen Preview" className="w-full h-auto object-contain" />
             </div>
             <div className="pt-2 mt-2 flex items-center justify-between text-xs text-gray-400">
-              <span>Only shared with AI when you ask a question.</span>
+              <span>Captured {Math.round((Date.now() - currentFrame.timestamp) / 1000)}s ago.</span>
               <button
                 onClick={() => setShowFullPreview(false)}
                 className="btn btn-secondary btn-sm"
@@ -462,28 +717,27 @@ export default function FloatingAssistant() {
         </div>
       )}
 
-      {/* ─── CONVERSATION CHAT AREA ─────────────────────────── */}
+      {/* ─── CONTEXT-AWARE CONVERSATION AREA ─────────────────── */}
       <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-3">
         {messages.length === 0 && !streamingText ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600/30 to-blue-500/20 border border-violet-500/30 flex items-center justify-center text-2xl mb-3 shadow-lg shadow-violet-900/20">
+          <div className="h-full flex flex-col items-center justify-center text-center p-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600/30 to-blue-500/20 border border-violet-500/30 flex items-center justify-center text-xl mb-2.5 shadow-md shadow-violet-900/20">
               ✦
             </div>
-            <h3 className="text-sm font-semibold text-gray-200 mb-1">Contextual Desktop Assistant</h3>
-            <p className="text-xs text-gray-400 max-w-xs mb-4">
-              Toggle screen context above or ask any question. FocusPilot reasons about visible code, errors, UI, and documents in real time.
+            <h3 className="text-xs font-semibold text-gray-200 mb-1">FocusPilot Live Context Assistant</h3>
+            <p className="text-[11px] text-gray-400 max-w-xs mb-3 leading-relaxed">
+              Combines live screen context + meeting speech audio. Ask any question or click a prompt below.
             </p>
 
-            {/* Quick Action Buttons */}
-            <div className="w-full grid grid-cols-2 gap-2 text-left">
+            <div className="w-full grid grid-cols-2 gap-1.5 text-left">
               {QUICK_ACTIONS.map((action, i) => (
                 <button
                   key={i}
-                  onClick={() => sendMessage(action.prompt)}
+                  onClick={() => handleTriggerAnswer(action.prompt)}
                   disabled={isGenerating}
-                  className="px-2.5 py-2 bg-charcoal-900/80 hover:bg-charcoal-800 border border-charcoal-800 hover:border-violet-600/40 rounded-xl transition-all cursor-pointer text-left group"
+                  className="px-2.5 py-1.5 bg-charcoal-900/80 hover:bg-charcoal-800 border border-charcoal-800 hover:border-violet-600/40 rounded-lg transition-all cursor-pointer text-left group"
                 >
-                  <div className="text-xs font-medium text-gray-300 group-hover:text-violet-300 transition-colors">
+                  <div className="text-[11px] font-medium text-gray-300 group-hover:text-violet-300 transition-colors">
                     {action.label}
                   </div>
                 </button>
@@ -497,7 +751,7 @@ export default function FloatingAssistant() {
               className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
             >
               <div
-                className={`max-w-[90%] rounded-2xl p-3 text-xs leading-relaxed select-text shadow-md ${
+                className={`max-w-[92%] rounded-2xl p-3 text-xs leading-relaxed select-text shadow-md ${
                   msg.role === 'user'
                     ? 'bg-violet-600 text-white rounded-br-none'
                     : 'bg-charcoal-900 border border-charcoal-800 text-gray-200 rounded-bl-none prose-dark'
@@ -508,7 +762,6 @@ export default function FloatingAssistant() {
                 </ReactMarkdown>
               </div>
 
-              {/* Message Footer / Copy */}
               {msg.role === 'assistant' && (
                 <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-gray-500">
                   <button
@@ -525,10 +778,9 @@ export default function FloatingAssistant() {
           ))
         )}
 
-        {/* Live streaming chunk bubble */}
         {streamingText && (
           <div className="flex flex-col items-start animate-fade-in">
-            <div className="max-w-[90%] rounded-2xl rounded-bl-none p-3 text-xs leading-relaxed bg-charcoal-900 border border-violet-800/50 text-gray-200 prose-dark shadow-lg">
+            <div className="max-w-[92%] rounded-2xl rounded-bl-none p-3 text-xs leading-relaxed bg-charcoal-900 border border-violet-800/50 text-gray-200 prose-dark shadow-lg">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {streamingText}
               </ReactMarkdown>
@@ -540,15 +792,15 @@ export default function FloatingAssistant() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ─── QUICK ACTIONS HORIZONTAL BAR ───────────────────── */}
+      {/* ─── QUICK PROMPTS STRIP ─────────────────────────────── */}
       {messages.length > 0 && (
-        <div className="px-3 py-1.5 flex gap-1.5 overflow-x-auto no-scrollbar border-t border-charcoal-800/40 bg-charcoal-900/40">
+        <div className="px-3 py-1 flex gap-1.5 overflow-x-auto no-scrollbar border-t border-charcoal-800/40 bg-charcoal-900/40">
           {QUICK_ACTIONS.slice(0, 4).map((action, i) => (
             <button
               key={i}
-              onClick={() => sendMessage(action.prompt)}
+              onClick={() => handleTriggerAnswer(action.prompt)}
               disabled={isGenerating}
-              className="px-2.5 py-1 text-[11px] whitespace-nowrap bg-charcoal-800/80 hover:bg-charcoal-700 text-gray-300 hover:text-violet-200 border border-charcoal-700 rounded-full transition-all cursor-pointer"
+              className="px-2 py-0.5 text-[10px] whitespace-nowrap bg-charcoal-800/80 hover:bg-charcoal-700 text-gray-300 hover:text-violet-200 border border-charcoal-700 rounded-full transition-all cursor-pointer"
             >
               {action.label}
             </button>
@@ -557,23 +809,33 @@ export default function FloatingAssistant() {
       )}
 
       {/* ─── COMPOSER BAR ───────────────────────────────────── */}
-      <div className="p-3 bg-charcoal-900/95 border-t border-charcoal-800/80 backdrop-blur-md">
-        {/* Attached context chip */}
-        {currentFrame && screenContextEnabled && (
-          <div className="mb-2 flex items-center justify-between bg-charcoal-800/80 px-2.5 py-1 rounded-lg border border-charcoal-700/60 text-[11px]">
-            <div className="flex items-center gap-2">
-              <span className="text-violet-400 font-semibold">📷 Screen Context Attached</span>
-              <span className="text-gray-400">({currentFrame.width}x{currentFrame.height})</span>
-            </div>
-            <button
-              onClick={() => performCapture(true)}
-              className="text-gray-400 hover:text-violet-300 transition-colors"
-              title="Refresh capture"
-            >
-              🔄 Refresh
-            </button>
-          </div>
-        )}
+      <div className="p-2.5 bg-charcoal-900/95 border-t border-charcoal-800/80 backdrop-blur-md">
+        {/* Attached Context Pills */}
+        <div className="mb-1.5 flex items-center gap-1.5 flex-wrap text-[10px]">
+          {currentFrame && screenContextEnabled && (
+            <span className="inline-flex items-center gap-1 bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+              <span>📷 Screen Attached</span>
+              <button
+                onClick={() => setCurrentFrame(null)}
+                className="hover:text-emerald-200 ml-0.5"
+              >
+                ✕
+              </button>
+            </span>
+          )}
+
+          {transcriptSegments.length > 0 && (
+            <span className="inline-flex items-center gap-1 bg-violet-950/80 text-violet-300 border border-violet-800/60 px-2 py-0.5 rounded-full">
+              <span>🎙️ Transcript Attached ({transcriptSegments.length} turns)</span>
+              <button
+                onClick={handleClearTranscript}
+                className="hover:text-violet-200 ml-0.5"
+              >
+                ✕
+              </button>
+            </span>
+          )}
+        </div>
 
         <div className="flex items-end gap-2">
           <textarea
@@ -582,30 +844,34 @@ export default function FloatingAssistant() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              screenContextEnabled
-                ? 'Ask anything about your screen... (Enter to send)'
+              screenContextEnabled && isAudioActive
+                ? 'Ask with Screen + Audio context... (Enter to send)'
+                : screenContextEnabled
+                ? 'Ask about your screen... (Enter to send)'
+                : isAudioActive
+                ? 'Ask about meeting speech... (Enter to send)'
                 : 'Ask FocusPilot anything... (Enter to send)'
             }
             rows={1}
             disabled={isGenerating}
-            className="flex-1 max-h-28 min-h-[38px] p-2.5 bg-charcoal-800/90 border border-charcoal-700 focus:border-violet-500 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none resize-none transition-colors"
+            className="flex-1 max-h-24 min-h-[36px] p-2 bg-charcoal-800/90 border border-charcoal-700 focus:border-violet-500 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none resize-none transition-colors"
           />
 
           {isGenerating ? (
             <button
               onClick={handleStop}
-              className="h-[38px] px-3.5 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-medium text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-lg shadow-red-950/40"
+              className="h-[36px] px-3 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-medium text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-md shadow-red-950/40"
               title="Stop generating"
             >
               Stop
             </button>
           ) : (
             <button
-              onClick={() => sendMessage()}
+              onClick={() => handleTriggerAnswer()}
               disabled={!input.trim()}
-              className={`h-[38px] px-3.5 rounded-xl font-medium text-xs transition-all flex items-center justify-center ${
+              className={`h-[36px] px-3 rounded-xl font-medium text-xs transition-all flex items-center justify-center ${
                 input.trim()
-                  ? 'bg-violet-600 hover:bg-violet-500 active:scale-95 text-white shadow-lg shadow-violet-900/40 cursor-pointer'
+                  ? 'bg-violet-600 hover:bg-violet-500 active:scale-95 text-white shadow-md shadow-violet-900/40 cursor-pointer'
                   : 'bg-charcoal-800 text-gray-500 cursor-not-allowed'
               }`}
               title="Send message (Enter)"
@@ -617,7 +883,7 @@ export default function FloatingAssistant() {
           {messages.length > 0 && !isGenerating && (
             <button
               onClick={handleClearChat}
-              className="h-[38px] px-2.5 text-gray-400 hover:text-gray-200 hover:bg-charcoal-800 rounded-xl transition-colors text-xs cursor-pointer"
+              className="h-[36px] px-2 text-gray-400 hover:text-gray-200 hover:bg-charcoal-800 rounded-xl transition-colors text-xs cursor-pointer"
               title="Clear conversation"
             >
               🗑️

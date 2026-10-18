@@ -26,6 +26,7 @@ declare global {
           temperature?: number;
           maxTokens?: number;
           imageContext?: import('../shared/types').ImageContext;
+          audioContext?: import('../shared/types').AudioTranscriptContext;
         }) => Promise<string>;
         testConnection: (provider: string, model: string) => Promise<{ ok: boolean; error?: string }>;
         cancel: () => void;

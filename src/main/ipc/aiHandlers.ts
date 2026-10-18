@@ -42,6 +42,7 @@ export function registerAiHandlers(): void {
           maxTokens: payload.maxTokens,
           signal,
           imageContext: payload.imageContext,
+          audioContext: payload.audioContext,
         });
 
         for await (const chunk of stream) {

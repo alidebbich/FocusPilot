@@ -32,7 +32,7 @@ if (!keys.gemini) {
 // 2. Synthesize a clean 1280x720 test screen frame with mock text
 const genAI = new GoogleGenerativeAI(keys.gemini);
 const model = genAI.getGenerativeModel({
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.5-flash-lite',
   systemInstruction: 'You are FocusPilot, a context-aware Windows desktop assistant. Answer questions based on the provided screen capture.'
 });
 
@@ -59,13 +59,13 @@ const prompt = 'I have shared my screen with you. Confirm that you can receive i
 
     if (fullText.length > 10) {
       console.log('\n✓ Multimodal screen context stream verified successfully!');
-      process.exit(0);
+      process.exitCode = 0;
     } else {
       console.error('Empty response');
-      process.exit(1);
+      process.exitCode = 1;
     }
   } catch (err) {
     console.error('Screen AI flow failed:', err);
-    process.exit(1);
+    process.exitCode = 1;
   }
 })();
