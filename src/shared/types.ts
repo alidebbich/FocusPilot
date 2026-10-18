@@ -123,6 +123,10 @@ export interface AppSettings {
   systemInstruction: string;
   preferredMicId?: string;
   dataRetentionDays: number;
+  windowOpacity: number;
+  alwaysOnTop: boolean;
+  captureIntervalSeconds: number;
+  selectedSourceId?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -133,10 +137,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxTokens: 4096,
   systemInstruction: '',
   dataRetentionDays: 90,
+  windowOpacity: 0.95,
+  alwaysOnTop: false,
+  captureIntervalSeconds: 15,
 };
 
 // ─── IPC Channel Names ───────────────────────────────────────
 export const IPC = {
+  // Window controls
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_CLOSE: 'window:close',
+  WINDOW_SET_ALWAYS_ON_TOP: 'window:set-always-on-top',
+  WINDOW_GET_ALWAYS_ON_TOP: 'window:get-always-on-top',
+  WINDOW_SET_OPACITY: 'window:set-opacity',
+  WINDOW_TOGGLE_COLLAPSE: 'window:toggle-collapse',
+  WINDOW_GET_COLLAPSED: 'window:get-collapsed',
+
   // AI
   AI_SEND_MESSAGE: 'ai:send-message',
   AI_STREAM_START: 'ai:stream-start',
@@ -182,6 +198,7 @@ export const IPC = {
   // Screen
   SCREEN_CAPTURE: 'screen:capture',
   SCREEN_SOURCES: 'screen:sources',
+  SCREEN_CAPTURE_FRAME: 'screen:capture-frame',
 
   // Diagnostics
   DIAG_GET: 'diag:get',
@@ -190,6 +207,36 @@ export const IPC = {
   // Data
   DATA_DELETE_ALL: 'data:delete-all',
 } as const;
+
+// ─── Image & Screen Context ──────────────────────────────────
+export interface ImageContext {
+  base64: string;
+  dataUrl: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  timestamp: number;
+  sourceId?: string;
+  sourceName?: string;
+  hash?: string;
+}
+
+export type ScreenContextStatus = 'off' | 'ready' | 'capturing' | 'analyzing' | 'paused' | 'error';
+
+export interface ScreenCaptureResult {
+  ok: boolean;
+  dataUrl?: string;
+  base64?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  timestamp?: number;
+  sourceId?: string;
+  sourceName?: string;
+  hash?: string;
+  changed?: boolean;
+  error?: string;
+}
 
 // ─── IPC Payloads ────────────────────────────────────────────
 export interface AiSendMessagePayload {
@@ -200,6 +247,7 @@ export interface AiSendMessagePayload {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  imageContext?: ImageContext;
 }
 
 export interface AiResponse {

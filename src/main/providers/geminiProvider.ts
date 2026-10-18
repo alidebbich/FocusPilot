@@ -3,7 +3,7 @@ import {
   HarmBlockThreshold,
   HarmCategory,
 } from '@google/generative-ai';
-import type { ChatMessage } from '../../shared/types';
+import type { ChatMessage, ImageContext } from '../../shared/types';
 
 interface StreamOptions {
   messages: ChatMessage[];
@@ -12,6 +12,7 @@ interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  imageContext?: ImageContext;
 }
 
 function normalizeModel(model?: string): string {
@@ -30,9 +31,14 @@ export class GeminiProvider {
 
   async *streamMessage(opts: StreamOptions): AsyncGenerator<string> {
     const modelName = normalizeModel(opts.model);
+    const systemPrompt = opts.systemInstruction ||
+      (opts.imageContext
+        ? 'You are FocusPilot, a context-aware Windows desktop assistant. The user has shared their authorized screen capture with you. Answer their questions accurately and concisely based on what is visible on screen, whether it is code, UI, error messages, or documents.'
+        : undefined);
+
     const model = this.client.getGenerativeModel({
       model: modelName,
-      systemInstruction: opts.systemInstruction || undefined,
+      systemInstruction: systemPrompt,
       generationConfig: {
         temperature: opts.temperature ?? 0.7,
         maxOutputTokens: opts.maxTokens ?? 4096,
@@ -45,7 +51,7 @@ export class GeminiProvider {
       ],
     });
 
-    // Convert messages to Gemini history format
+    // Convert previous messages to Gemini history format
     const history = opts.messages.slice(0, -1).map((msg) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }],
@@ -56,7 +62,22 @@ export class GeminiProvider {
 
     const chat = model.startChat({ history });
 
-    const result = await chat.sendMessageStream(lastMessage.content);
+    let messagePayload: string | Array<string | { inlineData: { data: string; mimeType: string } }>;
+    if (opts.imageContext?.base64) {
+      messagePayload = [
+        {
+          inlineData: {
+            data: opts.imageContext.base64,
+            mimeType: opts.imageContext.mimeType || 'image/jpeg',
+          },
+        },
+        lastMessage.content,
+      ];
+    } else {
+      messagePayload = lastMessage.content;
+    }
+
+    const result = await chat.sendMessageStream(messagePayload as any);
 
     for await (const chunk of result.stream) {
       if (opts.signal?.aborted) break;

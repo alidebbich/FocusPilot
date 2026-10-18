@@ -19,13 +19,23 @@
   }
 
   body {
-    @apply bg-charcoal-950 text-gray-100 font-sans;
+    background: transparent !important;
+    color: #f3f4f6;
+    font-family: 'Inter', system-ui, sans-serif;
     margin: 0;
     padding: 0;
     overflow: hidden;
     height: 100vh;
     width: 100vw;
     user-select: none;
+  }
+
+  .window-drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .window-no-drag {
+    -webkit-app-region: no-drag;
   }
 
   /* Make text selectable in content areas */

@@ -41,6 +41,7 @@ export function registerAiHandlers(): void {
           temperature: payload.temperature,
           maxTokens: payload.maxTokens,
           signal,
+          imageContext: payload.imageContext,
         });
 
         for await (const chunk of stream) {

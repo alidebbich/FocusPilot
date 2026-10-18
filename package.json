@@ -17,6 +17,7 @@
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
     "test": "vitest run",
     "test:electron": "electron tests/electron-db.test.js",
+    "test:screen": "node tests/screen-ai-flow.test.js",
     "test:watch": "vitest",
     "start": "electron ."
   },
