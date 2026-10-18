@@ -1,0 +1,41 @@
+# FocusPilot AI — .gitignore
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets and credentials
+.env
+.env.local
+.env.production
+secrets.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Editor directories
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Electron Forge output
+out/
