@@ -12,6 +12,9 @@ import { IPC } from '../shared/types';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Prevent Chromium WebRTC WGC from attempting capture on uncapturable background HWNDs
+app.commandLine.appendSwitch('disable-features', 'WebRtcAllowWgcWindowCapturer');
+
 interface WindowState {
   x?: number;
   y?: number;

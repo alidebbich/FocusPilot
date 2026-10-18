@@ -34,10 +34,13 @@ export function registerScreenHandlers(): void {
     async (_event, payload?: { sourceId?: string; force?: boolean }): Promise<ScreenCaptureResult> => {
       try {
         const targetSourceId = payload?.sourceId;
+        const types: ('screen' | 'window')[] = targetSourceId?.startsWith('window:')
+          ? ['window']
+          : ['screen'];
 
         // Capture at 1280x720 resolution to maintain sharp text while keeping payloads fast and quota-friendly
         const sources = await desktopCapturer.getSources({
-          types: ['screen', 'window'],
+          types,
           thumbnailSize: { width: 1280, height: 720 },
           fetchWindowIcons: false,
         });

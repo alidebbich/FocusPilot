@@ -8,6 +8,8 @@ export class WebSpeechSttAdapter implements SttAdapter {
   private isPaused = false;
   private events: Partial<SttAdapterEvents> = {};
   private restartTimeout: NodeJS.Timeout | null = null;
+  private consecutiveErrors = 0;
+  private readonly MAX_CONSECUTIVE_ERRORS = 2;
 
   isSupported(): boolean {
     if (typeof window === 'undefined') return false;
@@ -35,6 +37,7 @@ export class WebSpeechSttAdapter implements SttAdapter {
 
     this.isListening = true;
     this.isPaused = false;
+    this.consecutiveErrors = 0;
     this.initRecognition(options?.language || 'en-US');
   }
 
@@ -57,6 +60,7 @@ export class WebSpeechSttAdapter implements SttAdapter {
 
       this.recognition.onresult = (event: any) => {
         if (this.isPaused) return;
+        this.consecutiveErrors = 0;
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i];
@@ -88,14 +92,27 @@ export class WebSpeechSttAdapter implements SttAdapter {
 
         if (error === 'not-allowed' || error === 'service-not-allowed') {
           this.isListening = false;
+          this.consecutiveErrors = 0;
           this.events.onError?.('Microphone or speech permission was denied.');
           this.events.onStatusChange?.('error');
           return;
         }
 
         if (error === 'network') {
-          this.events.onError?.('Network error during speech recognition. Reconnecting…');
-          this.scheduleRestart(lang);
+          this.consecutiveErrors++;
+          if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+            this.isListening = false;
+            this.events.onError?.(
+              'Live speech recognition network service is unavailable in standalone Electron (Google Cloud Speech requires browser context or an external STT service). Microphone capture and volume meter remain active.'
+            );
+            this.events.onStatusChange?.('error');
+            try {
+              this.recognition?.abort();
+            } catch {}
+            return;
+          }
+          this.events.onError?.('Speech service network issue, attempting reconnection…');
+          this.scheduleRestart(lang, 2000);
           return;
         }
 
@@ -104,14 +121,21 @@ export class WebSpeechSttAdapter implements SttAdapter {
           return;
         }
 
+        this.consecutiveErrors++;
+        if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+          this.isListening = false;
+          this.events.onError?.(`Speech recognition stopped due to error: ${error}`);
+          this.events.onStatusChange?.('error');
+          return;
+        }
         this.events.onError?.(`Speech recognition error: ${error}`);
       };
 
       this.recognition.onend = () => {
         // Chromium SpeechRecognition times out after ~60s of silence/stream.
-        // Auto-reconnect seamlessly if the user has not stopped listening.
-        if (this.isListening && !this.isPaused) {
-          this.scheduleRestart(lang);
+        // Auto-reconnect seamlessly if the user has not stopped listening and no fatal errors occurred.
+        if (this.isListening && !this.isPaused && this.consecutiveErrors < this.MAX_CONSECUTIVE_ERRORS) {
+          this.scheduleRestart(lang, 1500);
         } else if (!this.isListening) {
           this.events.onStatusChange?.('idle');
         }
@@ -128,17 +152,20 @@ export class WebSpeechSttAdapter implements SttAdapter {
     }
   }
 
-  private scheduleRestart(lang: string): void {
+  private scheduleRestart(lang: string, delayMs = 1500): void {
     if (this.restartTimeout) clearTimeout(this.restartTimeout);
+    if (!this.isListening || this.isPaused || this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+      return;
+    }
     this.restartTimeout = setTimeout(() => {
-      if (this.isListening && !this.isPaused) {
+      if (this.isListening && !this.isPaused && this.consecutiveErrors < this.MAX_CONSECUTIVE_ERRORS) {
         try {
           this.initRecognition(lang);
         } catch {
-          // Ignore retry failure, will loop on next trigger
+          // Ignore retry failure
         }
       }
-    }, 250);
+    }, delayMs);
   }
 
   pause(): void {
@@ -165,6 +192,7 @@ export class WebSpeechSttAdapter implements SttAdapter {
   async stop(): Promise<void> {
     this.isListening = false;
     this.isPaused = false;
+    this.consecutiveErrors = 0;
     if (this.restartTimeout) {
       clearTimeout(this.restartTimeout);
       this.restartTimeout = null;
