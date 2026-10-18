@@ -8,7 +8,7 @@ describe('AppSettings validation', () => {
   it('DEFAULT_SETTINGS has correct structure', async () => {
     const { DEFAULT_SETTINGS } = await import('../src/shared/types');
     expect(DEFAULT_SETTINGS.provider).toBe('gemini');
-    expect(DEFAULT_SETTINGS.model).toBe('gemini-1.5-flash');
+    expect(DEFAULT_SETTINGS.model).toBe('gemini-2.5-flash');
     expect(DEFAULT_SETTINGS.temperature).toBeGreaterThanOrEqual(0);
     expect(DEFAULT_SETTINGS.temperature).toBeLessThanOrEqual(1);
     expect(DEFAULT_SETTINGS.maxTokens).toBeGreaterThan(0);

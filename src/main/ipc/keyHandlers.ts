@@ -62,7 +62,22 @@ function saveKeys(keys: Record<string, string>): void {
 
 export async function getKeyForProvider(provider: string): Promise<string | null> {
   const keys = loadKeys();
-  return keys[provider] ?? null;
+  if (keys[provider] && keys[provider].trim().length > 0) {
+    return keys[provider].trim();
+  }
+
+  // Fallback to process.env if present
+  if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+  if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+    return process.env.OPENAI_API_KEY.trim();
+  }
+  if (provider === 'grok' && process.env.GROK_API_KEY) {
+    return process.env.GROK_API_KEY.trim();
+  }
+
+  return null;
 }
 
 export function registerKeyHandlers(): void {
@@ -79,11 +94,11 @@ export function registerKeyHandlers(): void {
     console.log(`[Keys] Key saved (encrypted) for provider: ${provider}`);
   });
 
-  ipcMain.handle(IPC.KEY_GET_EXISTS, (_event, payload: unknown) => {
+  ipcMain.handle(IPC.KEY_GET_EXISTS, async (_event, payload: unknown) => {
     if (!isKeyPayload(payload)) return false;
     const { provider } = payload as { provider: ProviderName };
-    const keys = loadKeys();
-    return !!(keys[provider] && keys[provider].length > 0);
+    const key = await getKeyForProvider(provider);
+    return !!(key && key.length > 0);
   });
 
   ipcMain.handle(IPC.KEY_DELETE, (_event, payload: unknown) => {

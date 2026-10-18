@@ -127,7 +127,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   provider: 'gemini',
-  model: 'gemini-1.5-flash',
+  model: 'gemini-2.5-flash',
   theme: 'dark',
   temperature: 0.7,
   maxTokens: 4096,

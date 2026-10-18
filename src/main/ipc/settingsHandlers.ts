@@ -14,7 +14,11 @@ function readSettings(): AppSettings {
   try {
     const raw = fs.readFileSync(getSettingsPath(), 'utf-8');
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    if (merged.model && (merged.model.startsWith('gemini-1.5') || merged.model.startsWith('gemini-2.0'))) {
+      merged.model = 'gemini-2.5-flash';
+    }
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

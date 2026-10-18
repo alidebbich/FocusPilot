@@ -14,6 +14,13 @@ interface StreamOptions {
   signal?: AbortSignal;
 }
 
+function normalizeModel(model?: string): string {
+  if (!model || model.startsWith('gemini-1.5') || model === 'gemini-2.0-flash' || model === 'gemini-2.0-flash-lite') {
+    return 'gemini-2.5-flash';
+  }
+  return model;
+}
+
 export class GeminiProvider {
   private client: GoogleGenerativeAI;
 
@@ -22,8 +29,9 @@ export class GeminiProvider {
   }
 
   async *streamMessage(opts: StreamOptions): AsyncGenerator<string> {
+    const modelName = normalizeModel(opts.model);
     const model = this.client.getGenerativeModel({
-      model: opts.model || 'gemini-1.5-flash',
+      model: modelName,
       systemInstruction: opts.systemInstruction || undefined,
       generationConfig: {
         temperature: opts.temperature ?? 0.7,
@@ -58,7 +66,8 @@ export class GeminiProvider {
   }
 
   async testConnection(model: string): Promise<void> {
-    const m = this.client.getGenerativeModel({ model: model || 'gemini-1.5-flash' });
+    const modelName = normalizeModel(model);
+    const m = this.client.getGenerativeModel({ model: modelName });
     const result = await m.generateContent('Reply with the single word: OK');
     const text = result.response.text();
     if (!text) throw new Error('Empty response from Gemini API');
@@ -66,11 +75,12 @@ export class GeminiProvider {
 
   static getSupportedModels(): string[] {
     return [
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-8b',
-      'gemini-1.5-pro',
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+      'gemini-2.5-pro',
+      'gemini-pro-latest',
+      'gemini-2.5-flash-lite',
     ];
   }
 }
