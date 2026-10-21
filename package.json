@@ -21,7 +21,10 @@
     "test:fusion": "node tests/live-fusion-stream.test.js",
     "test:audio": "node tests/live-audio-stt.test.js",
     "test:watch": "vitest",
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -43,11 +46,54 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "electron": "^36.4.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vitest": "^2.1.9",
     "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.focuspilot.app",
+    "productName": "FocusPilot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FocusPilot"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "alidebbich",
+      "repo": "FocusPilot"
+    }
   }
 }

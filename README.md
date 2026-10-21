@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="https://img.shields.io/badge/FocusPilot-AI%20Desktop%20Assistant-7c3aed?style=for-the-badge&logo=electron&logoColor=white" alt="FocusPilot" />
 
@@ -64,15 +64,33 @@ npm run dev
 
 The app will launch as a floating overlay. On first run, go to **Settings → AI Provider** and enter your Gemini API key.
 
-### Production Build
+### Production Build & Packaging
 
 ```bash
-# Build both renderer (Vite) and main process (tsc)
+# 1. Compile both renderer (Vite) and main process (tsc)
 npm run build
 
-# Then launch
-npm start
+# 2. Package into Windows distributable (.exe NSIS installer & portable .exe)
+npm run dist:win
+
+# Or unpack directly to test the bundle:
+npm run pack
 ```
+
+Distributables are generated in the `release/` folder:
+- **`FocusPilot Setup 1.0.0.exe`** — Standard Windows NSIS installer with desktop/start menu shortcuts
+- **`FocusPilot 1.0.0.exe`** — Standalone portable executable (runs anywhere with zero installation)
+
+### 🚀 CI/CD Automated Releases
+
+A GitHub Actions workflow is included (`.github/workflows/build-and-release.yml`). To automatically build and attach Windows `.exe` installers to a GitHub Release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Or trigger manually under the **Actions** tab on GitHub via `workflow_dispatch`.
 
 ---
 
