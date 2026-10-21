@@ -93,7 +93,8 @@
     "publish": {
       "provider": "github",
       "owner": "alidebbich",
-      "repo": "FocusPilot"
+      "repo": "FocusPilot",
+      "releaseType": "release"
     }
   }
 }
