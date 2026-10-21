@@ -13,6 +13,8 @@ export class QuestionDetector {
   private onQuestionCallbacks = new Set<(q: QuestionDetection) => void>();
   private pendingTimer: NodeJS.Timeout | null = null;
   private lastDetectedText = '';
+  private recentQuestions = new Map<string, number>(); // text -> timestamp
+  private readonly DUPLICATE_WINDOW_MS = 25000; // 25s suppression window
 
   onQuestion(cb: (q: QuestionDetection) => void): () => void {
     this.onQuestionCallbacks.add(cb);
@@ -37,7 +39,7 @@ export class QuestionDetector {
       return;
     }
 
-    // Calculate basic heuristic confidence (0.5 to 0.95)
+    // Calculate heuristic confidence (0.5 to 0.99)
     let confidence = 0.6;
     if (endsWithQuestionMark) confidence += 0.25;
     if (startsWithQuestionWord) confidence += 0.15;
@@ -51,12 +53,27 @@ export class QuestionDetector {
     }
 
     const fireDetection = () => {
-      // Avoid firing duplicate consecutive triggers for the same question
-      if (raw.toLowerCase() === this.lastDetectedText.toLowerCase()) {
+      const normalized = this.normalizeText(raw);
+      const now = Date.now();
+
+      // Clean up stale entries from duplicate window
+      for (const [text, time] of this.recentQuestions.entries()) {
+        if (now - time > this.DUPLICATE_WINDOW_MS) {
+          this.recentQuestions.delete(text);
+        }
+      }
+
+      // Suppress duplicate questions
+      if (
+        normalized === this.normalizeText(this.lastDetectedText) ||
+        this.recentQuestions.has(normalized)
+      ) {
         return;
       }
 
       this.lastDetectedText = raw;
+      this.recentQuestions.set(normalized, now);
+
       const questionEvent: QuestionDetection = {
         id: uuidv4(),
         text: raw,
@@ -77,11 +94,21 @@ export class QuestionDetector {
     }
   }
 
+  private normalizeText(text: string): string {
+    return text.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  }
+
+  isDuplicate(text: string): boolean {
+    const norm = this.normalizeText(text);
+    return norm === this.normalizeText(this.lastDetectedText) || this.recentQuestions.has(norm);
+  }
+
   clear(): void {
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
     this.lastDetectedText = '';
+    this.recentQuestions.clear();
   }
 }

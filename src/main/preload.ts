@@ -21,6 +21,8 @@ const IPC = {
   WINDOW_SET_OPACITY: 'window:set-opacity',
   WINDOW_TOGGLE_COLLAPSE: 'window:toggle-collapse',
   WINDOW_GET_COLLAPSED: 'window:get-collapsed',
+  WINDOW_SET_CONTENT_PROTECTION: 'window:set-content-protection',
+  WINDOW_GET_CONTENT_PROTECTION: 'window:get-content-protection',
 
   // AI
   AI_SEND_MESSAGE: 'ai:send-message',
@@ -69,6 +71,10 @@ const IPC = {
   SCREEN_SOURCES: 'screen:sources',
   SCREEN_CAPTURE_FRAME: 'screen:capture-frame',
 
+  // Audio
+  AUDIO_TRANSCRIBE: 'audio:transcribe',
+  AUDIO_CHECK_STATUS: 'audio:check-status',
+
   // Diagnostics
   DIAG_GET: 'diag:get',
   DIAG_GET_VERSION: 'diag:get-version',
@@ -88,6 +94,10 @@ const api = {
     setOpacity: (val: number): Promise<void> => ipcRenderer.invoke(IPC.WINDOW_SET_OPACITY, val),
     toggleCollapse: (): Promise<boolean> => ipcRenderer.invoke(IPC.WINDOW_TOGGLE_COLLAPSE),
     getCollapsed: (): Promise<boolean> => ipcRenderer.invoke(IPC.WINDOW_GET_COLLAPSED),
+    setContentProtection: (flag: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.WINDOW_SET_CONTENT_PROTECTION, flag),
+    getContentProtection: (): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.WINDOW_GET_CONTENT_PROTECTION),
   },
 
   // Global hotkeys
@@ -174,6 +184,18 @@ const api = {
     save: (session: TranscriptSession): Promise<void> =>
       ipcRenderer.invoke(IPC.TRANSCRIPT_SAVE, session),
     delete: (id: string): Promise<void> => ipcRenderer.invoke(IPC.TRANSCRIPT_DELETE, { id }),
+  },
+
+  // Audio & Speech Transcription
+  audio: {
+    transcribe: (payload: {
+      audioBase64: string;
+      mimeType?: string;
+      language?: string;
+      provider?: ProviderName;
+    }): Promise<{ text: string }> => ipcRenderer.invoke(IPC.AUDIO_TRANSCRIBE, payload),
+    checkStatus: (): Promise<{ geminiConfigured: boolean; supportedProviders: string[] }> =>
+      ipcRenderer.invoke(IPC.AUDIO_CHECK_STATUS),
   },
 
   // Screen Context

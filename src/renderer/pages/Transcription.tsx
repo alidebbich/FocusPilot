@@ -2,9 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
-import type { TranscriptSession } from '../../../shared/types';
+import { AudioCaptureService } from '../services/audio/AudioCaptureService';
+import type { AudioDevice, TranscriptSession } from '../../shared/types';
 
 type RecordingState = 'idle' | 'recording' | 'processing' | 'done';
+
+const audioService = new AudioCaptureService();
 
 export default function Transcription() {
   const { settings, hasApiKey } = useSettings();
@@ -15,103 +18,99 @@ export default function Transcription() {
   const [summary, setSummary] = useState('');
   const [duration, setDuration] = useState(0);
   const [micId, setMicId] = useState('');
-  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [mics, setMics] = useState<AudioDevice[]>([]);
   const [sessions, setSessions] = useState<TranscriptSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [micError, setMicError] = useState('');
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [volumeLevel, setVolumeLevel] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
   useEffect(() => {
     loadMics();
     loadSessions();
-  }, []);
+
+    const unsubTranscript = audioService.onTranscript((seg) => {
+      if (seg.isFinal) {
+        setTranscript((prev) => (prev ? `${prev} ${seg.text}` : seg.text));
+        setInterimText('');
+      } else {
+        setInterimText(seg.text);
+      }
+    });
+
+    const unsubVolume = audioService.onVolumeLevel((vol) => {
+      setVolumeLevel(vol);
+    });
+
+    const unsubError = audioService.onError((err) => {
+      setMicError(err);
+      showToast('error', err);
+      setRecordingState('idle');
+      if (timerRef.current) clearInterval(timerRef.current);
+    });
+
+    return () => {
+      unsubTranscript();
+      unsubVolume();
+      unsubError();
+      audioService.stopListening().catch(() => {});
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [showToast]);
 
   async function loadMics() {
     try {
-      // Request mic permission first
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter((d) => d.kind === 'audioinput');
-      setMics(audioInputs);
-      if (audioInputs[0]) setMicId(audioInputs[0].deviceId);
-    } catch (err) {
+      const devices = await audioService.getDevices();
+      setMics(devices);
+      if (devices[0]) setMicId(devices[0].deviceId);
+      setMicError('');
+    } catch (err: any) {
       setMicError('Microphone access denied. Please grant microphone permission.');
       console.error('Mic error:', err);
     }
   }
 
   async function loadSessions() {
-    const list = await window.api.transcripts.list();
-    setSessions(list);
-  }
-
-  function startRecording() {
-    const SpeechRecognition = window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast('error', 'Speech recognition is not supported in this browser/context.');
-      return;
+    try {
+      const list = await window.api.transcripts.list();
+      setSessions(list);
+    } catch (err) {
+      console.error('Failed to load transcripts:', err);
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = '';
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          final += result[0].transcript + ' ';
-        } else {
-          interim += result[0].transcript;
-        }
-      }
-      if (final) setTranscript((prev) => prev + final);
-      setInterimText(interim);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'not-allowed') {
-        setMicError('Microphone permission denied.');
-        setRecordingState('idle');
-      } else if (event.error !== 'aborted') {
-        showToast('warning', `Speech recognition issue: ${event.error}`);
-      }
-    };
-
-    recognition.onend = () => {
-      if (recordingState === 'recording') {
-        // Auto-restart if still recording
-        try { recognition.start(); } catch {}
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-
-    startTimeRef.current = Date.now();
-    timerRef.current = setInterval(() => {
-      setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
-
-    setRecordingState('recording');
-    setTranscript('');
-    setInterimText('');
-    setSummary('');
-    showToast('info', 'Recording started');
   }
 
-  function stopRecording() {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+  async function startRecording() {
+    try {
+      setMicError('');
+      const { deviceLabel } = await audioService.startListening({
+        deviceId: micId || undefined,
+      });
+
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 1000);
+
+      setRecordingState('recording');
+      setTranscript('');
+      setInterimText('');
+      setSummary('');
+      showToast('info', `Recording started on: ${deviceLabel}`);
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMicError(msg);
+      setRecordingState('idle');
+      showToast('error', msg);
+    }
+  }
+
+  async function stopRecording() {
+    await audioService.stopListening();
     if (timerRef.current) clearInterval(timerRef.current);
     setInterimText('');
     setRecordingState('done');
+    setVolumeLevel(0);
     showToast('success', 'Recording stopped');
   }
 
@@ -181,7 +180,7 @@ export default function Transcription() {
           <div>
             <h2 className="text-base font-semibold text-gray-100">Transcription</h2>
             <p className="text-xs text-gray-500">
-              Uses browser Web Speech API — requires internet for cloud speech processing.
+              FocusPilot Audio Engine — Real-time 16kHz speech recognition via Gemini AI.
             </p>
           </div>
           <button
@@ -201,7 +200,7 @@ export default function Transcription() {
         {/* Mic selection */}
         {mics.length > 0 && recordingState === 'idle' && (
           <div className="mb-4">
-            <label className="section-title block mb-1">Microphone</label>
+            <label className="section-title block mb-1">Microphone / Input Device</label>
             <select
               className="input max-w-xs"
               value={micId}
@@ -209,7 +208,7 @@ export default function Transcription() {
             >
               {mics.map((m) => (
                 <option key={m.deviceId} value={m.deviceId}>
-                  {m.label || `Microphone ${m.deviceId.slice(0, 8)}`}
+                  {m.label}
                 </option>
               ))}
             </select>
@@ -219,7 +218,7 @@ export default function Transcription() {
         {/* Recording controls */}
         <div className="flex items-center gap-4 mb-4">
           {recordingState === 'idle' && (
-            <button className="btn-primary" onClick={startRecording} disabled={!!micError}>
+            <button className="btn-primary" onClick={startRecording} disabled={!hasApiKey}>
               ⏺ Start Recording
             </button>
           )}
@@ -229,6 +228,19 @@ export default function Transcription() {
                 <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
                 <span className="text-red-300 text-sm font-mono">{formatDuration(duration)}</span>
               </div>
+
+              {/* Volume meter */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-charcoal-900 border border-charcoal-700">
+                <span className="text-[11px] text-gray-400">Mic Level:</span>
+                <div className="w-24 h-2 bg-charcoal-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-violet-500 transition-all duration-75"
+                    style={{ width: `${volumeLevel}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-gray-400 font-mono w-6">{volumeLevel}%</span>
+              </div>
+
               <button className="btn-danger" onClick={stopRecording}>
                 ■ Stop Recording
               </button>
@@ -269,10 +281,10 @@ export default function Transcription() {
             <div className="flex-1 rounded-xl border border-charcoal-700 bg-charcoal-900 p-4 overflow-y-auto font-mono text-sm text-gray-300 leading-relaxed">
               {transcript || (recordingState === 'recording' ? <span className="text-gray-600">Listening…</span> : '')}
               {interimText && (
-                <span className="text-gray-500 italic">{interimText}</span>
+                <span className="text-violet-400 italic ml-1">{interimText}</span>
               )}
               {!transcript && !interimText && recordingState === 'recording' && (
-                <span className="text-gray-600 animate-pulse">●</span>
+                <span className="text-gray-600 animate-pulse ml-1">●</span>
               )}
             </div>
           </div>
@@ -292,7 +304,9 @@ export default function Transcription() {
               <div className="text-4xl text-charcoal-700 mb-3">⏺</div>
               <p className="text-gray-400 text-sm font-medium">Ready to record</p>
               <p className="text-gray-600 text-xs mt-1">
-                Click "Start Recording" to begin transcription
+                {hasApiKey
+                  ? 'Click "Start Recording" to begin audio capture & transcription'
+                  : 'Please configure your Gemini API key in Settings first'}
               </p>
             </div>
           </div>

@@ -1,134 +1,257 @@
-# FocusPilot AI
+﻿<div align="center">
 
-> **Privacy-conscious AI productivity and learning assistant for Windows.**
+<img src="https://img.shields.io/badge/FocusPilot-AI%20Desktop%20Assistant-7c3aed?style=for-the-badge&logo=electron&logoColor=white" alt="FocusPilot" />
 
-Built with Electron, React 18, TypeScript, Tailwind CSS, Vite, and SQLite (`better-sqlite3`).
+<br/><br/>
 
----
+<img src="https://img.shields.io/badge/Electron-36-47848F?style=flat-square&logo=electron&logoColor=white" />
+<img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" />
+<img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/Gemini-2.5%20Flash-4285F4?style=flat-square&logo=google&logoColor=white" />
+<img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" />
+<img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat-square" />
 
-## 🚀 Key Features
+<br/><br/>
 
-1. **AI Assistant**
-   - Interactive chat with Google Gemini models (Gemini 1.5 Flash, 1.5 Pro, 2.0 Flash) and multi-provider extensibility.
-   - Streaming responses with Markdown and code block syntax highlighting.
-   - Full conversation history stored locally in SQLite with fast search and management.
+**FocusPilot** is a privacy-conscious AI productivity assistant for Windows — a floating desktop overlay that fuses real-time screen analysis, live audio transcription, and Gemini AI to answer questions, coach interviews, and explain anything on your screen without leaving your workflow.
 
-2. **Technical Interview Practice**
-   - Mock interviews across 10 technical domains: JavaScript, TypeScript, React, Angular, Node.js, Databases, APIs, System Design, Algorithms, and General Engineering.
-   - Three selectable difficulty tiers (Beginner, Intermediate, Advanced).
-   - Dynamic real-time interviewer persona asking adaptive follow-up questions and generating structured scorecards (clarity, depth, correctness, feedback).
+<br/>
 
-3. **Coding Practice**
-   - Curated coding challenges with instant hints, solution discussions, and code review.
-   - Interactive prompt templates for code explanation, refactoring, complexity analysis, and edge case generation.
+[✦ Features](#-features) · [⚡ Quick Start](#-quick-start) · [⚙️ Configuration](#️-configuration) · [🏗 Architecture](#-architecture) · [🤝 Contributing](#-contributing)
 
-4. **Audio Transcription**
-   - Browser Web Speech API real-time microphone capture with explicit user-controlled toggle.
-   - Automatic AI post-processing: instant meeting / lecture summary, key takeaways, and action items extraction.
-   - Clear visual recording indicator with privacy badge ensuring zero silent capture.
-
-5. **Screen Analysis**
-   - Explicit user-triggered desktop screen or window capture using Electron's `desktopCapturer`.
-   - Real-time preview with confirmation before any image data is analyzed.
-   - Multimodal image reasoning: OCR, UI review, code debugging, and step-by-step problem solving.
-
-6. **Local Notes & History**
-   - Comprehensive searchable tabbed view of notes, past conversations, interview reports, and meeting transcripts.
-   - Full-text search and tag filtering.
-
-7. **Security & Key Management**
-   - API keys are **never stored in plaintext** and **never committed to Git**.
-   - Keys are encrypted using AES-256-GCM with machine-derived entropy and stored in the user's OS application data directory (`%APPDATA%/focuspilot`).
-   - One-click "Delete All Data" option for complete privacy control.
-
-8. **System Diagnostics**
-   - Real-time status reporting on database connectivity, encryption status, provider configurations, screen capture permissions, and speech recognition capability.
+</div>
 
 ---
 
-## 🔒 Security Architecture
+## ✦ Features
 
-- **Context Isolation & Sandboxing**: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, and `webSecurity: true`.
-- **Minimal Typed Preload**: Renderer has access only to a strictly defined, validated `window.api` bridge.
-- **Safe External Navigation**: All external hyperlinks are intercepted and launched in the user's default browser via `shell.openExternal`. No arbitrary new electron windows or child frames.
-- **SQL Injection Prevention**: All SQLite queries are strictly parameterized; WAL journal mode ensures data integrity.
-- **Zero Background Ingestion**: Transcription and screen capture require explicit, user-initiated action.
+| Feature | Description |
+|---------|-------------|
+| 🤖 **AI Chat** | Stream responses from Gemini 2.5 Flash/Pro with full conversation history |
+| 📺 **Screen Analysis** | Capture & analyze your screen — explains code, errors, UIs, and documents |
+| 🎙️ **Live Transcription** | Real-time speech-to-text using Gemini multimodal audio (16kHz WAV pipeline) |
+| 🔗 **Context Fusion** | Automatically merges screen + audio context into every AI query |
+| 🎯 **Interview Coach** | Practice technical interviews with per-answer AI scoring & feedback |
+| ⌨️ **Coding Practice** | Paste any code for instant explanation, debugging, and refactoring |
+| 📝 **Notes & History** | Full conversation history with tagging, search, and export |
+| 🔒 **Privacy First** | All data stays local (SQLite). API keys are AES-256-GCM encrypted on-disk. No telemetry. |
+| 🖥️ **Floating Overlay** | Always-on-top transparent window with collapse, opacity, and content-protection controls |
+| ⌨️ **Global Hotkey** | Toggle visibility from any application with `Ctrl+Shift+Space` |
 
 ---
 
-## 🛠️ Getting Started
+## ⚡ Quick Start
 
 ### Prerequisites
-- Windows 10/11
-- Node.js (v18+)
-- npm
+
+- **Node.js** ≥ 18 (LTS recommended)
+- **Windows** 10 / 11 (primary platform; macOS partially supported)
+- A **[Google Gemini API key](https://aistudio.google.com/apikey)** (free tier available)
 
 ### Installation
-```bash
-npm install
-```
 
-### Development
-Launch both the Vite dev server and Electron window simultaneously:
 ```bash
+# 1. Clone the repository
+git clone https://github.com/alidebbich/FocusPilot.git
+cd FocusPilot
+
+# 2. Install dependencies
+npm install
+
+# 3. Start in development mode
 npm run dev
 ```
 
-Or start the built app directly:
+The app will launch as a floating overlay. On first run, go to **Settings → AI Provider** and enter your Gemini API key.
+
+### Production Build
+
 ```bash
+# Build both renderer (Vite) and main process (tsc)
+npm run build
+
+# Then launch
 npm start
 ```
 
-### Production Build
-Builds both the Vite frontend bundle and TypeScript main process:
+---
+
+## ⚙️ Configuration
+
+### API Key Setup (Required)
+
+FocusPilot stores your API key **encrypted on-disk** — it is never stored in plain text or committed to source control.
+
+1. Open FocusPilot
+2. Click **Settings** (⚙️ icon)
+3. Under **AI Provider → API Key**, paste your Gemini key
+4. Click **Save** — then optionally **Test Connection** to verify
+
+> **Get a free key:** https://aistudio.google.com/apikey
+
+### Environment Variable (Optional)
+
+You can also set the key via environment variable (useful for CI or headless testing):
+
 ```bash
-npm run build
+# Create a .env file (never commit this!)
+cp .env.example .env
+# Edit .env and add:
+GEMINI_API_KEY=your_key_here
 ```
 
-### Testing
-- **Unit & Logic Tests** (Vitest):
-  ```bash
-  npm run test
-  ```
-- **Electron Native SQLite Integration Test**:
-  ```bash
-  npm run test:electron
-  ```
-- **App Launch Verification**:
-  ```bash
-  node tests/launch.test.js
-  ```
+### Available Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Model | `gemini-2.5-flash` | AI model to use |
+| Temperature | `0.7` | Response creativity (0 = precise, 1 = creative) |
+| Max Tokens | `4096` | Maximum response length |
+| Window Opacity | `0.95` | Overlay transparency |
+| Always on Top | `false` | Keep window above all others |
+| Exclude from Capture | `true` | Hide FocusPilot from screen recordings |
+| Auto-Answer Questions | `true` | Automatically answer detected questions from audio |
 
 ---
 
-## 📁 Directory Structure
+## 🏗 Architecture
 
 ```
-focuspilot/
+FocusPilot/
 ├── src/
-│   ├── main/
-│   │   ├── database/         # SQLite schema, PRAGMA migrations, CRUD
-│   │   ├── ipc/              # Typed IPC handlers (AI, keys, DB, screen, diag)
-│   │   ├── providers/        # AI provider integrations (Gemini, etc.)
-│   │   ├── index.ts          # Main process entry, window lifecycle, security
-│   │   └── preload.ts        # Sandboxed contextBridge API
-│   ├── renderer/
-│   │   ├── components/       # Layout, Sidebar, Toast, Nav
-│   │   ├── context/          # Settings & App context
-│   │   ├── pages/            # Dashboard, Assistant, Interview, Coding,
-│   │   │                     # Transcription, Screen, Notes, Settings, About
-│   │   ├── App.tsx           # React routing & app root
-│   │   ├── main.tsx          # React DOM entry
-│   │   └── index.css         # Dark theme & Bento design styling
-│   └── shared/
-│       └── types.ts          # Shared TypeScript contracts & IPC channels
-├── tests/
-│   ├── unit.test.ts          # Vitest unit test suite
-│   ├── electron-db.test.js   # Electron SQLite verification
-│   └── launch.test.js        # Window startup lifecycle test
-├── package.json
-├── tsconfig.json
-├── tsconfig.main.json
-├── tailwind.config.js
-└── vite.config.ts
+│   ├── main/                         # Electron main process (Node.js)
+│   │   ├── index.ts                  # App entry, window, global shortcuts
+│   │   ├── preload.ts                # Secure context bridge
+│   │   ├── database/db.ts            # SQLite schema + parameterized queries
+│   │   ├── providers/geminiProvider.ts  # Gemini streaming AI + model validation
+│   │   └── ipc/
+│   │       ├── aiHandlers.ts         # Streaming AI + abort
+│   │       ├── audioHandlers.ts      # Gemini multimodal audio STT
+│   │       ├── screenHandlers.ts     # desktopCapturer + change-detection
+│   │       ├── dbHandlers.ts         # CRUD for all data entities
+│   │       ├── keyHandlers.ts        # AES-256-GCM encrypted key storage
+│   │       └── settingsHandlers.ts   # Persistent settings
+│   │
+│   ├── renderer/                     # React renderer (Vite / Chromium)
+│   │   ├── pages/
+│   │   │   ├── AIAssistant.tsx       # Chat UI with streaming + history
+│   │   │   ├── FloatingAssistant.tsx # Compact overlay mode
+│   │   │   ├── ScreenAnalysis.tsx    # Screen capture + AI analysis
+│   │   │   ├── Transcription.tsx     # Live audio transcription
+│   │   │   ├── InterviewPractice.tsx # AI interview coach
+│   │   │   ├── CodingPractice.tsx    # Code explainer / debugger
+│   │   │   ├── Dashboard.tsx         # Stats & quick actions
+│   │   │   ├── NotesHistory.tsx      # Saved sessions
+│   │   │   └── Settings.tsx          # API key + preferences
+│   │   ├── services/
+│   │   │   ├── audio/
+│   │   │   │   ├── AudioCaptureService.ts   # getUserMedia + VAD + WAV encoding
+│   │   │   │   ├── SttAdapter.ts            # Gemini STT + Web Speech adapters
+│   │   │   │   └── QuestionDetector.ts      # Question detection + dedup
+│   │   │   └── fusion/
+│   │   │       └── ContextFusionService.ts  # Screen + audio context merger
+│   │   └── context/                  # React contexts
+│   │
+│   └── shared/types.ts               # IPC channel names + shared types
+│
+└── tests/
+    ├── unit.test.ts                  # Settings, DB, IPC, window tests
+    └── audio-fusion.test.ts          # Full audio pipeline (11 requirements)
 ```
+
+### IPC Security Model
+
+```
+Renderer (sandboxed) ──► preload.ts (contextBridge) ──► Main Process
+                              ↑ whitelisted API only
+                              ↑ nodeIntegration: false
+                              ↑ contextIsolation: true
+                              ↑ sandbox: true
+```
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all unit + integration tests
+npm test
+
+# Watch mode
+npm run test:watch
+
+# TypeScript type checks
+npm run typecheck        # renderer
+npm run typecheck:main   # main process
+```
+
+---
+
+## 🔒 Privacy & Security
+
+- **No telemetry** — FocusPilot never phones home
+- **Local-only data** — SQLite database in your user data directory
+- **Encrypted keys** — AES-256-GCM stored in app data, never in source code
+- **Content protection** — Excluded from screen recordings by default (`WDA_EXCLUDEFROMCAPTURE`)
+- **Sandboxed renderer** — `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Desktop Shell | [Electron 36](https://www.electronjs.org/) |
+| UI Framework | [React 18](https://react.dev/) + [TypeScript 5.8](https://www.typescriptlang.org/) |
+| Bundler | [Vite 6](https://vitejs.dev/) |
+| Styling | [Tailwind CSS 3](https://tailwindcss.com/) |
+| AI Provider | [Google Gemini API](https://ai.google.dev/) |
+| Database | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) (WAL mode) |
+| Routing | [React Router 6](https://reactrouter.com/) |
+| Testing | [Vitest](https://vitest.dev/) |
+
+---
+
+## 🎛️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+Space` | Toggle FocusPilot visibility |
+| `Alt+Shift+Space` | Toggle (fallback) |
+| `Enter` | Send chat message |
+| `Shift+Enter` | New line in chat |
+
+---
+
+## 📋 Known Limitations
+
+- **Windows primary** — Tested on Windows 10/11. macOS builds should work but are not actively tested.
+- **System audio loopback** — Requires a loopback device (e.g. Stereo Mix, VB-Cable) for system audio capture.
+- **API key entropy** — The current encryption seed has low entropy. For stronger isolation, integrate [keytar](https://github.com/atom/node-keytar).
+
+---
+
+## 🤝 Contributing
+
+1. Fork this repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Ensure `npm test` passes and `npm run typecheck` is clean
+4. Commit: `git commit -m "feat: describe your change"`
+5. Push: `git push origin feature/your-feature`
+6. Open a Pull Request against `main`
+
+---
+
+## 📄 License
+
+MIT © [Ali Debbich](https://github.com/alidebbich)
+
+---
+
+<div align="center">
+
+Built with ❤️ using Electron, React, and Google Gemini
+
+⭐ **Star this repo if FocusPilot helps you stay in flow!**
+
+</div>

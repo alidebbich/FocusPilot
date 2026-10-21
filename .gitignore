@@ -18,6 +18,11 @@ out/
 .env.production
 secrets.json
 
+# User runtime data (never commit — machine-specific, may contain encrypted keys)
+provider-keys.enc
+window-state.json
+settings.json
+
 # OS files
 .DS_Store
 Thumbs.db

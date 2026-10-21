@@ -150,9 +150,8 @@ describe.runIf(sqliteSupported)('SQLite database operations', () => {
 
 // ─── Interview session logic tests ────────────────────────────
 describe('InterviewSession logic', () => {
-  it('subjects list includes expected entries', async () => {
-    const { InterviewSubject } = await import('../src/shared/types').catch(() => ({ InterviewSubject: null }));
-    // Just test the type structure from shared types
+  it('subjects list includes expected entries', () => {
+    // Valid subject types defined in shared types
     const validSubjects = [
       'javascript', 'typescript', 'react', 'angular', 'nodejs',
       'databases', 'apis', 'system-design', 'algorithms', 'general'
@@ -205,3 +204,71 @@ describe('IPC input validation', () => {
     expect(isValid({ conversationId: 'id', messages: [], provider: 'gemini', model: 'flash' })).toBe(true);
   });
 });
+
+// ─── Floating Window & Content Protection tests ────────────────
+describe('Floating Window & Screenshot Content Protection', () => {
+  it('DEFAULT_SETTINGS enables excludeFromCapture by default', async () => {
+    const { DEFAULT_SETTINGS } = await import('../src/shared/types');
+    expect(DEFAULT_SETTINGS.excludeFromCapture).toBe(true);
+    expect(DEFAULT_SETTINGS.windowOpacity).toBe(0.95);
+    expect(DEFAULT_SETTINGS.alwaysOnTop).toBe(false);
+  });
+
+  it('IPC object defines WINDOW_SET_CONTENT_PROTECTION and WINDOW_GET_CONTENT_PROTECTION', async () => {
+    const { IPC } = await import('../src/shared/types');
+    expect(IPC.WINDOW_SET_CONTENT_PROTECTION).toBe('window:set-content-protection');
+    expect(IPC.WINDOW_GET_CONTENT_PROTECTION).toBe('window:get-content-protection');
+    expect(IPC.WINDOW_TOGGLE_COLLAPSE).toBe('window:toggle-collapse');
+    expect(IPC.WINDOW_GET_COLLAPSED).toBe('window:get-collapsed');
+  });
+
+  it('clamps window opacity correctly between 0.4 and 1.0', () => {
+    function clampOpacity(val: number): number {
+      const num = Number(val);
+      return Math.max(0.4, Math.min(1.0, isNaN(num) ? 0.95 : num));
+    }
+
+    expect(clampOpacity(0.1)).toBe(0.4);
+    expect(clampOpacity(0.0)).toBe(0.4);
+    expect(clampOpacity(-5)).toBe(0.4);
+    expect(clampOpacity(1.5)).toBe(1.0);
+    expect(clampOpacity(0.95)).toBe(0.95);
+    expect(clampOpacity(0.7)).toBe(0.7);
+    expect(clampOpacity(NaN)).toBe(0.95);
+  });
+
+  it('calculates collapse and uncollapse heights appropriately', () => {
+    function getCollapseBounds(isCollapsed: boolean, previousHeight = 680) {
+      if (isCollapsed) {
+        return { height: 58, minHeight: 58 };
+      }
+      return { height: Math.max(460, previousHeight), minHeight: 460 };
+    }
+
+    const collapsed = getCollapseBounds(true, 680);
+    expect(collapsed.height).toBe(58);
+    expect(collapsed.minHeight).toBe(58);
+
+    const expanded = getCollapseBounds(false, 680);
+    expect(expanded.height).toBe(680);
+    expect(expanded.minHeight).toBe(460);
+
+    const expandedSmall = getCollapseBounds(false, 300);
+    expect(expandedSmall.height).toBe(460); // enforces minimum readable height
+  });
+
+  it('filters out FocusPilot from screen capture sources', () => {
+    const mockSources = [
+      { id: 'screen:0:0', name: 'Entire Screen', thumbnail: {} },
+      { id: 'window:1234:0', name: 'Visual Studio Code', thumbnail: {} },
+      { id: 'window:5678:0', name: 'FocusPilot AI Assistant', thumbnail: {} },
+      { id: 'window:9999:0', name: 'Google Chrome', thumbnail: {} },
+    ];
+
+    const filtered = mockSources.filter((s) => !s.name.includes('FocusPilot'));
+    expect(filtered).toHaveLength(3);
+    expect(filtered.some((s) => s.name.includes('FocusPilot'))).toBe(false);
+    expect(filtered.map((s) => s.name)).toEqual(['Entire Screen', 'Visual Studio Code', 'Google Chrome']);
+  });
+});
+

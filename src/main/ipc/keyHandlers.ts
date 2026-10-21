@@ -24,6 +24,10 @@ function getKeysFilePath(): string {
 }
 
 // Derive a machine-specific encryption key from a fixed salt + machine ID approximation
+// TODO: The seed uses only process.platform and userData path length for entropy, which is
+//       very weak (low entropy, potentially guessable on same-OS machines). For production-grade
+//       key protection, replace with OS credential store via: npm install keytar
+//       and use keytar.setPassword / keytar.getPassword instead of this file-based approach.
 function getDerivedKey(): Buffer {
   const seed = `focuspilot-${process.platform}-${app.getPath('userData').length}`;
   return crypto.scryptSync(seed, 'focuspilot-salt-v1', 32);

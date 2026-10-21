@@ -38,6 +38,8 @@ export interface SttAdapter {
   readonly name: string;
   isSupported(): boolean;
   start(options?: { language?: string }): Promise<void>;
+  processAudioChunk?(pcmData: Float32Array, sampleRate: number): Promise<void>;
+  processAudioBuffer?(audioBuffer: ArrayBuffer | Uint8Array, mimeType: string): Promise<void>;
   pause(): void;
   resume(): void;
   stop(): Promise<void>;

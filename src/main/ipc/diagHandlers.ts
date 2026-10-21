@@ -41,11 +41,28 @@ export function registerDiagHandlers(): void {
     features.push({ name: 'Node Integration (renderer)', status: 'pass', detail: 'Disabled' });
 
     // Transcription
-    features.push({
-      name: 'Transcription (Web Speech API)',
-      status: 'not-tested',
-      detail: 'Uses browser Web Speech API — requires microphone permission. Audio may be routed through Google speech servers.',
-    });
+    try {
+      const key = await getKeyForProvider('gemini');
+      if (key) {
+        features.push({
+          name: 'Speech Transcription (Gemini Multimodal Audio)',
+          status: 'pass',
+          detail: '16kHz mono audio capture with Gemini speech-to-text engine configured and active',
+        });
+      } else {
+        features.push({
+          name: 'Speech Transcription (Gemini Multimodal Audio)',
+          status: 'not-configured',
+          detail: 'Requires Gemini API key in Settings → AI Provider',
+        });
+      }
+    } catch {
+      features.push({
+        name: 'Speech Transcription (Gemini Multimodal Audio)',
+        status: 'fail',
+        detail: 'Failed to query transcription provider key status',
+      });
+    }
 
     // Screen capture
     features.push({

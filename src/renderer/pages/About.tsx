@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { DiagnosticsReport } from '../../../shared/types';
+import type { DiagnosticsReport } from '../../shared/types';
 
 export default function About() {
   const [diag, setDiag] = useState<DiagnosticsReport | null>(null);
@@ -86,7 +86,7 @@ export default function About() {
             <div className="space-y-2 text-xs text-gray-500">
               <p>• This application stores all data locally. No data leaves your machine except API requests to your configured provider.</p>
               <p>• The Gemini API is a paid service. Check your quota and pricing at <span className="text-violet-400">aistudio.google.com</span>.</p>
-              <p>• Transcription uses the browser Web Speech API which may route audio through Google's servers.</p>
+              <p>• Audio capture uses real-time 16kHz mono Web Audio buffering. Speech-to-text transcription routes spoken audio chunks through your configured AI provider (Gemini API). Audio is processed transiently and is never stored raw on disk.</p>
               <p>• Screen capture is always explicit and user-initiated. No background capture occurs.</p>
               <p>• API keys are stored in your OS credential manager (keytar) when available, not in any config file.</p>
             </div>

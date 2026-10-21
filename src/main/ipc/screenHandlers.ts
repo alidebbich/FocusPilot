@@ -17,7 +17,10 @@ export function registerScreenHandlers(): void {
         fetchWindowIcons: false,
       });
 
-      return sources.map((s) => ({
+      // Filter out FocusPilot's own window from capture targets
+      const filtered = sources.filter((s) => !s.name.includes('FocusPilot'));
+
+      return filtered.map((s) => ({
         id: s.id,
         name: s.name,
         thumbnailDataUrl: s.thumbnail.toDataURL(),

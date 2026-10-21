@@ -16,8 +16,21 @@ interface StreamOptions {
   audioContext?: AudioTranscriptContext;
 }
 
+const VALID_MODELS = new Set([
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+]);
+
 function normalizeModel(model?: string): string {
-  if (!model || model.startsWith('gemini-1.5') || model === 'gemini-2.0-flash' || model === 'gemini-2.0-flash-lite') {
+  if (!model) return 'gemini-2.5-flash';
+  // Map legacy/deprecated model names to current equivalents
+  if (model.startsWith('gemini-1.5') || model === 'gemini-2.0-flash' || model === 'gemini-2.0-flash-lite') {
+    return 'gemini-2.5-flash';
+  }
+  // If the model ID is not in our known-valid set, fall back safely
+  if (!VALID_MODELS.has(model)) {
+    console.warn(`[GeminiProvider] Unknown model "${model}", falling back to gemini-2.5-flash`);
     return 'gemini-2.5-flash';
   }
   return model;
@@ -34,7 +47,7 @@ export class GeminiProvider {
     const primaryModel = normalizeModel(opts.model);
     const candidateModels = [primaryModel];
     if (primaryModel === 'gemini-2.5-flash') {
-      candidateModels.push('gemini-3.5-flash-lite');
+      candidateModels.push('gemini-2.5-flash-lite');
     }
 
     let lastError: any = null;
@@ -144,10 +157,8 @@ export class GeminiProvider {
   static getSupportedModels(): string[] {
     return [
       'gemini-2.5-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-flash-latest',
+      'gemini-2.5-flash-lite',
       'gemini-2.5-pro',
-      'gemini-pro-latest',
     ];
   }
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
-import type { ConversationSummary, InterviewSession } from '../../../shared/types';
+import type { ConversationSummary, InterviewSession } from '../../shared/types';
 
 export default function Dashboard() {
   const navigate = useNavigate();

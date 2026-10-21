@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
-import type { ScreenSource } from '../../../shared/types';
+import type { ScreenSource } from '../../shared/types';
 
 type Phase = 'idle' | 'selecting' | 'preview' | 'analyzing' | 'result';
 

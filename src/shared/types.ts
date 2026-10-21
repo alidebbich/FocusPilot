@@ -93,7 +93,34 @@ export interface InterviewQuestion {
   score?: number;
 }
 
-// ─── Transcription ───────────────────────────────────────────
+// ─── Transcription & Live Audio ───────────────────────────────
+export type AudioSessionStatus = 'idle' | 'listening' | 'paused' | 'processing' | 'error';
+export type AudioSourceType = 'microphone' | 'system-audio';
+
+export interface AudioDevice {
+  deviceId: string;
+  label: string;
+  kind: string;
+  isDefault?: boolean;
+}
+
+export interface TranscriptSegment {
+  id: string;
+  text: string;
+  isFinal: boolean;
+  timestamp: number;
+  confidence?: number;
+  isQuestion?: boolean;
+}
+
+export interface QuestionDetection {
+  id: string;
+  text: string;
+  timestamp: number;
+  confidence: number;
+  source: 'audio' | 'manual';
+}
+
 export interface TranscriptSession {
   id: string;
   title: string;
@@ -129,6 +156,7 @@ export interface AppSettings {
   selectedSourceId?: string;
   autoAnswerQuestions: boolean;
   preferredAudioSource: 'microphone' | 'system-audio';
+  excludeFromCapture: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -144,6 +172,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   captureIntervalSeconds: 15,
   autoAnswerQuestions: true,
   preferredAudioSource: 'microphone',
+  excludeFromCapture: true,
 };
 
 // ─── IPC Channel Names ───────────────────────────────────────
@@ -156,6 +185,8 @@ export const IPC = {
   WINDOW_SET_OPACITY: 'window:set-opacity',
   WINDOW_TOGGLE_COLLAPSE: 'window:toggle-collapse',
   WINDOW_GET_COLLAPSED: 'window:get-collapsed',
+  WINDOW_SET_CONTENT_PROTECTION: 'window:set-content-protection',
+  WINDOW_GET_CONTENT_PROTECTION: 'window:get-content-protection',
 
   // AI
   AI_SEND_MESSAGE: 'ai:send-message',
@@ -203,6 +234,10 @@ export const IPC = {
   SCREEN_CAPTURE: 'screen:capture',
   SCREEN_SOURCES: 'screen:sources',
   SCREEN_CAPTURE_FRAME: 'screen:capture-frame',
+
+  // Audio
+  AUDIO_TRANSCRIBE: 'audio:transcribe',
+  AUDIO_CHECK_STATUS: 'audio:check-status',
 
   // Diagnostics
   DIAG_GET: 'diag:get',

@@ -330,7 +330,8 @@ export function saveTranscript(session: TranscriptSession): void {
          title = @title,
          duration = @duration,
          transcript = @transcript,
-         summary = @summary`
+         summary = @summary,
+         mic_label = @micLabel`
     )
     .run({
       id: session.id,

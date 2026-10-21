@@ -12,6 +12,8 @@ declare global {
         setOpacity: (val: number) => Promise<void>;
         toggleCollapse: () => Promise<boolean>;
         getCollapsed: () => Promise<boolean>;
+        setContentProtection: (flag: boolean) => Promise<boolean>;
+        getContentProtection: () => Promise<boolean>;
       };
       hotkeys: {
         onToggleAssistant: (cb: () => void) => () => void;
@@ -66,6 +68,15 @@ declare global {
         list: () => Promise<import('../shared/types').TranscriptSession[]>;
         save: (session: import('../shared/types').TranscriptSession) => Promise<void>;
         delete: (id: string) => Promise<void>;
+      };
+      audio: {
+        transcribe: (payload: {
+          audioBase64: string;
+          mimeType?: string;
+          language?: string;
+          provider?: string;
+        }) => Promise<{ text: string }>;
+        checkStatus: () => Promise<{ geminiConfigured: boolean; supportedProviders: string[] }>;
       };
       screen: {
         getSources: () => Promise<import('../shared/types').ScreenSource[]>;

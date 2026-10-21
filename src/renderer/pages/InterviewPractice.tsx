@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
-import type { InterviewSession, InterviewQuestion, InterviewSubject, InterviewDifficulty } from '../../../shared/types';
+import type { InterviewSession, InterviewQuestion, InterviewSubject, InterviewDifficulty } from '../../shared/types';
 
 const SUBJECTS: { value: InterviewSubject; label: string; icon: string }[] = [
   { value: 'javascript', label: 'JavaScript', icon: 'JS' },

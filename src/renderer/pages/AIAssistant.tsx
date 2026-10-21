@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
-import type { ChatMessage, Conversation } from '../../../shared/types';
+import type { ChatMessage, Conversation } from '../../shared/types';
 
 export default function AIAssistant() {
   const { settings, hasApiKey } = useSettings();

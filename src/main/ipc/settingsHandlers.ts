@@ -15,7 +15,14 @@ function readSettings(): AppSettings {
     const raw = fs.readFileSync(getSettingsPath(), 'utf-8');
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
-    if (merged.model && (merged.model.startsWith('gemini-1.5') || merged.model.startsWith('gemini-2.0'))) {
+    // Normalize deprecated or invalid model IDs to a known-valid default
+    const VALID_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro']);
+    if (
+      merged.model &&
+      (merged.model.startsWith('gemini-1.5') ||
+        merged.model.startsWith('gemini-2.0') ||
+        !VALID_MODELS.has(merged.model))
+    ) {
       merged.model = 'gemini-2.5-flash';
     }
     return merged;

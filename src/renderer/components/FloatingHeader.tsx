@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useSettings } from '../context/SettingsContext';
+import type { AudioSessionStatus } from '../../shared/types';
 
 interface FloatingHeaderProps {
   screenContextActive: boolean;
-  audioListeningStatus: 'idle' | 'listening' | 'paused' | 'error';
+  audioListeningStatus: AudioSessionStatus;
   volumeLevel: number;
   onOpenMenu: () => void;
   isMenuOpen: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 export default function FloatingHeader({
@@ -15,16 +18,16 @@ export default function FloatingHeader({
   volumeLevel,
   onOpenMenu,
   isMenuOpen,
+  isCollapsed,
+  onToggleCollapse,
 }: FloatingHeaderProps) {
   const { settings, updateSettings } = useSettings();
   const [isPinned, setIsPinned] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [opacity, setOpacity] = useState(settings.windowOpacity || 0.95);
   const [showOpacityMenu, setShowOpacityMenu] = useState(false);
 
   useEffect(() => {
     window.api.window.getAlwaysOnTop().then(setIsPinned).catch(() => {});
-    window.api.window.getCollapsed().then(setIsCollapsed).catch(() => {});
   }, []);
 
   const togglePin = async () => {
@@ -34,9 +37,8 @@ export default function FloatingHeader({
     updateSettings({ alwaysOnTop: res });
   };
 
-  const toggleCollapse = async () => {
-    const res = await window.api.window.toggleCollapse();
-    setIsCollapsed(res);
+  const toggleCollapse = () => {
+    onToggleCollapse();
   };
 
   const handleOpacityChange = (val: number) => {
@@ -50,6 +52,7 @@ export default function FloatingHeader({
   const close = () => window.api.window.close();
 
   const isAudioListening = audioListeningStatus === 'listening';
+  const isAudioProcessing = audioListeningStatus === 'processing';
   const isAudioPaused = audioListeningStatus === 'paused';
 
   return (
@@ -83,6 +86,8 @@ export default function FloatingHeader({
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-all ${
             isAudioListening
               ? 'bg-violet-950/80 text-violet-300 border border-violet-800/60'
+              : isAudioProcessing
+              ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-800/60'
               : isAudioPaused
               ? 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
               : 'bg-charcoal-800 text-gray-400 border border-charcoal-700'
@@ -90,6 +95,8 @@ export default function FloatingHeader({
           title={
             isAudioListening
               ? `Listening (Mic Level: ${volumeLevel}%)`
+              : isAudioProcessing
+              ? 'Transcribing speech…'
               : isAudioPaused
               ? 'Audio listening paused'
               : 'Audio listening stopped'
@@ -99,12 +106,20 @@ export default function FloatingHeader({
             className={`w-1.5 h-1.5 rounded-full ${
               isAudioListening
                 ? 'bg-violet-400 animate-pulse'
+                : isAudioProcessing
+                ? 'bg-cyan-400 animate-spin'
                 : isAudioPaused
                 ? 'bg-amber-400'
                 : 'bg-gray-500'
             }`}
           />
-          {isAudioListening ? 'Audio ON' : isAudioPaused ? 'Audio Paused' : 'Audio Off'}
+          {isAudioListening
+            ? 'Audio ON'
+            : isAudioProcessing
+            ? 'Transcribing'
+            : isAudioPaused
+            ? 'Audio Paused'
+            : 'Audio Off'}
           {isAudioListening && volumeLevel > 5 && (
             <span className="text-[9px] text-violet-400 font-mono">
               {'|'.repeat(Math.min(3, Math.ceil(volumeLevel / 30)))}

@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../components/Toast';
 
+// Keep in sync with VALID_MODELS in src/main/providers/geminiProvider.ts
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
-  'gemini-3.8-flash',
-  'gemini-flash-latest',
-  'gemini-2.5-pro',
-  'gemini-pro-latest',
   'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
 ];
 
 export default function Settings() {
@@ -124,7 +122,7 @@ export default function Settings() {
             ))}
           </select>
           <p className="text-xs text-gray-600 mt-1">
-            gemini-1.5-flash is recommended for speed. gemini-1.5-pro for complex tasks.
+            gemini-2.5-flash is recommended for speed. gemini-2.5-pro for complex reasoning tasks.
           </p>
         </div>
 
@@ -224,6 +222,128 @@ export default function Settings() {
             {connResult.ok ? '✓ Connection successful — API is working' : `✕ ${connResult.error}`}
           </div>
         )}
+      </div>
+
+      {/* Floating Window & Screenshot Options */}
+      <div className="card mb-5">
+        <h3 className="text-sm font-semibold text-gray-200 mb-1">Floating Window & Screenshot Options</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Configure window transparency, screenshot visibility, and desktop floating behavior.
+        </p>
+
+        {/* Exclude from Capture */}
+        <div className="mb-4 pb-4 border-b border-charcoal-700/60">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-sm font-medium text-gray-200">
+              Exclude from Screenshots & Screen Shares
+            </span>
+            <button
+              onClick={async () => {
+                const next = !settings.excludeFromCapture;
+                await window.api.window.setContentProtection(next);
+                updateSettings({ excludeFromCapture: next });
+                showToast('info', next ? 'Content protection enabled' : 'Content protection disabled');
+              }}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                settings.excludeFromCapture ? 'bg-violet-600' : 'bg-charcoal-700'
+              }`}
+              title="Toggle content protection for screenshots"
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  settings.excludeFromCapture ? 'translate-x-4.5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 leading-relaxed mb-2">
+            Hides the assistant window from screen capture tools using standard Windows Display Affinity (<code>WDA_EXCLUDEFROMCAPTURE</code>) on Windows 10/11 and <code>NSWindowSharingNone</code> on macOS.
+          </p>
+          <div className="p-2.5 rounded-lg bg-charcoal-900/80 border border-charcoal-800 text-[11px] text-gray-400 space-y-1">
+            <div><strong className="text-gray-300">✓ Supported:</strong> Windows Snipping Tool (<code>Win+Shift+S</code>), Windows Game Bar, modern recording apps, and desktop screen-sharing.</div>
+            <div><strong className="text-gray-300">ℹ GDI / Legacy:</strong> Standard Print Screen on older graphics drivers may render a black/transparent rectangle or omit the window depending on DWM settings.</div>
+          </div>
+        </div>
+
+        {/* Window Opacity */}
+        <div className="mb-4 pb-4 border-b border-charcoal-700/60">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-200">
+              Window Opacity ({Math.round((settings.windowOpacity ?? 0.95) * 100)}%)
+            </label>
+            <div className="flex gap-1.5">
+              {[0.7, 0.85, 0.95, 1.0].map((val) => (
+                <button
+                  key={val}
+                  onClick={() => {
+                    window.api.window.setOpacity(val);
+                    updateSettings({ windowOpacity: val });
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                    Math.abs((settings.windowOpacity ?? 0.95) - val) < 0.02
+                      ? 'bg-violet-600 text-white font-medium'
+                      : 'bg-charcoal-800 text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  {Math.round(val * 100)}%
+                </button>
+              ))}
+            </div>
+          </div>
+          <input
+            type="range"
+            min="0.4"
+            max="1.0"
+            step="0.05"
+            value={settings.windowOpacity ?? 0.95}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              window.api.window.setOpacity(val);
+              updateSettings({ windowOpacity: val });
+            }}
+            className="w-full accent-violet-600"
+          />
+          <div className="flex justify-between text-[11px] text-gray-500 mt-1">
+            <span>Translucent (40%)</span>
+            <span>Solid (100%)</span>
+          </div>
+        </div>
+
+        {/* Always on Top */}
+        <div className="mb-4 pb-4 border-b border-charcoal-700/60 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-gray-200">Always on Top</div>
+            <div className="text-xs text-gray-400">Keep the assistant floating above other active desktop windows.</div>
+          </div>
+          <button
+            onClick={async () => {
+              const next = !settings.alwaysOnTop;
+              const res = await window.api.window.setAlwaysOnTop(next);
+              updateSettings({ alwaysOnTop: res });
+              showToast('info', res ? 'Always on top enabled' : 'Always on top disabled');
+            }}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+              settings.alwaysOnTop ? 'bg-violet-600' : 'bg-charcoal-700'
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                settings.alwaysOnTop ? 'translate-x-4.5' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Global Keyboard Shortcut */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-gray-200">Show / Hide Shortcut</div>
+            <div className="text-xs text-gray-400">Toggle floating window visibility from anywhere on your system.</div>
+          </div>
+          <div className="px-2.5 py-1 rounded bg-charcoal-900 border border-charcoal-700 font-mono text-xs text-violet-300">
+            Ctrl + Shift + Space
+          </div>
+        </div>
       </div>
 
       {/* System Instructions */}

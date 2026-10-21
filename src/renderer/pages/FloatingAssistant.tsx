@@ -298,10 +298,10 @@ export default function FloatingAssistant({
 
   // ─── Live Audio Control Handlers ─────────────────────────────
   const toggleAudioListening = async () => {
-    if (audioStatus === 'listening') {
+    if (audioStatus === 'listening' || audioStatus === 'processing') {
       await audioService.stopListening();
       questionDetector.clear();
-      showToast('info', 'Audio listening stopped (Microphone disconnected)');
+      showToast('info', 'Audio listening stopped');
     } else if (audioStatus === 'paused') {
       audioService.resumeListening();
       showToast('info', 'Audio listening resumed');
@@ -412,7 +412,7 @@ export default function FloatingAssistant({
     }
   };
 
-  const isAudioActive = audioStatus === 'listening';
+  const isAudioActive = audioStatus === 'listening' || audioStatus === 'processing';
   const isAudioPaused = audioStatus === 'paused';
 
   return (
